@@ -1,7 +1,7 @@
 ---
 name: security-health-check
-description: "Production-grade server security health check — firewall audit, SSH hardening, brute force detection, rootkit/malware scan, user audit, SUID audit, Docker security, systemd health, kernel hardening, crontab analysis, disk/memory thresholds. Supports interactive mode and no-agent cron watchdog."
-version: 2.5.0
+description: "Production-grade server security health check — 20 phases covering firewall, ports, SSH hardening, brute force, malware/rootkit, user audit, SUID, crontab, systemd, Docker, SELinux/AppArmor, kernel hardening, disk/inode, memory, login logs, SSH keys, system updates, auditd, TLS certificates, and unattended-upgrades. Includes scoring system, interactive mode, and no-agent cron watchdog."
+version: 2.6.0
 platforms: [linux]
 metadata:
   hermes:
@@ -11,9 +11,9 @@ metadata:
 
 # 服务器安全健康检查 (Production Edition)
 
-生产级服务器安全扫描，覆盖 **18 个安全检查领域**。支持两种模式：
+生产级服务器安全扫描，覆盖 **20 个安全检查领域**。支持两种模式：
 
-- **交互模式**（默认）— 全量 18 项检查，输出结构化安全报告 + 评分
+- **交互模式**（默认）— 全量 20 项检查，输出结构化安全报告 + 评分
 - **Watchdog 模式**（`no_agent` cron）— 轻量脚本每 30 分钟运行，仅异常时告警
 
 ## 触发方式
@@ -35,7 +35,7 @@ metadata:
 
 ---
 
-## 检查流程（18 项）
+## 检查流程（20 项）
 
 按顺序执行。**收集所有结果后再生成报告**，不要跳过任何项。
 
@@ -79,20 +79,6 @@ sudo grep -E "^PermitRootLogin|^PasswordAuthentication|^Port |^MaxAuthTries|^Cli
 
 # SSH 端口是否正在监听（注意实际端口，不一定是 22）
 ss -tlnp 2>&1 | grep -E "sshd|ssh"
-
-# ⚠️ 检查 socket 激活（Ubuntu 23.10+ 默认启用，会覆盖 sshd_config 端口设置）
-sshd -T 2>/dev/null | grep "^port "   # 有效配置中的端口（socket 激活时可能为空）
-sudo systemctl is-active ssh.socket 2>/dev/null   # socket 是否活跃
-# 注意：socket 激活时 ss -tlnp | grep ssh 也会返回空（无进程名），
-# 用端口号定位：ss -tlnp | grep 2222
-
-# ⚠️ 综合诊断流程（推荐执行顺序）：
-# 1. 先检查 ssh.socket 是否活跃
-# 2. 如果活跃，用端口号（如 2222）在 ss 输出中定位，不要用进程名 grep
-# 3. sshd -T 在 socket 激活时返回空（exit code 1），不代表 SSH 未运行
-# 4. 有效端口 = ssh.socket 的 ListenStream（override.conf 或默认 22）
-# 如果 ssh.socket 活跃且 sshd -T 返回空，仍应检查 sshd_config 中的
-# PermitRootLogin / PasswordAuthentication 等安全配置项（这些不受 socket 影响）
 ```
 
 安全基线（CIS Benchmark 级别）：
@@ -131,37 +117,16 @@ echo 'ClientAliveCountMax 2' | sudo tee -a /etc/ssh/sshd_config
 sudo systemctl restart ssh
 ```
 
-> ⚠️ **Ubuntu 服务名称陷阱**：Ubuntu 的 SSH systemd 服务名是 `ssh`，不是 `sshd`。执行 `systemctl restart sshd` 会报 `Unit sshd.service not found`。CentOS/RHEL 才用 `sshd`。如果不确定，先运行 `systemctl list-units | grep ssh` 确认实际服务名。
+> ⚠️ **Ubuntu 服务名称**：Ubuntu 的 SSH 服务名是 `ssh`，不是 `sshd`。CentOS/RHEL 才用 `sshd`。不确定时运行 `systemctl list-units | grep ssh` 确认。
 >
-> ⚠️ **Ubuntu 23.10+ socket 激活陷阱**：新版 Ubuntu 默认使用 systemd socket activation（`ssh.socket` 监听端口 22，按需启动 `ssh.service`）。此时即使在 `sshd_config` 中修改了 `Port`，`ssh.socket` 仍然监听 22 端口，**完全覆盖 sshd_config 的端口设置**。诊断方法：运行 `sshd -T | grep port` 看有效配置，再对比 `ss -tlnp | grep ssh` 看实际监听——如果两者端口不一致，就是 socket 激活导致的。
+> ⚠️ **SSH Socket 激活（Ubuntu 23.10+）**：`ssh.socket` 监听端口会**覆盖** `sshd_config` 的 `Port` 设置。诊断要点：
+> 1. `sshd -T | grep "^port "` 在 socket 激活时返回空（正常，不代表 SSH 未运行）
+> 2. `ss -tlnp | grep ssh` 也返回空（socket 服务无进程名），用**端口号**定位：`ss -tlnp | grep 2222`
+> 3. 修改端口时需同步修改 socket：创建 `/etc/systemd/system/ssh.socket.d/override.conf` 设置 `ListenStream=0.0.0.0:新端口`，然后 `systemctl restart ssh.socket && systemctl restart ssh`
 >
-> 修复方案（修改 SSH 端口时）：
-> ```bash
-> # 方案 A：创建 socket override（推荐，保留 socket 激活特性）
-> sudo mkdir -p /etc/systemd/system/ssh.socket.d
-> echo -e "[Socket]\nListenStream=\nListenStream=0.0.0.0:2222\nListenStream=[::]:2222" | sudo tee /etc/systemd/system/ssh.socket.d/override.conf
-> sudo systemctl daemon-reload
-> sudo systemctl restart ssh.socket
-> sudo systemctl restart ssh
->
-> # 方案 B：禁用 socket 激活，改用传统模式
-> sudo systemctl stop ssh.socket
-> sudo systemctl disable ssh.socket
-> sudo systemctl enable ssh
-> sudo systemctl restart ssh
-> ```
->
-> ⚠️ **`sshd -T` 在 socket 激活时返回空**：当 `ssh.socket` 活跃时，`sshd -T | grep "^port "` 可能返回空输出（exit code 1），因为 sshd 进程并非持久运行、端口由 socket 单元控制。
->
-> ⚠️ **`ss -tlnp | grep ssh` 在 socket 激活时也返回空**：socket-activated 服务（如 `ssh.socket`）在 `ss -tlnp` 输出中**没有进程名列**（该列为空），因此 `grep ssh` 匹配不到任何内容。这是 2026-06 实测发现的坑。**诊断方法**：直接查看完整 `ss -tlnp` 输出，用端口号（如 `grep 2222`）而非进程名来定位 SSH 监听。`sshd -T` 仅作为辅助参考（它返回的是 sshd_config 中的静态配置，不代表运行时端口）。
->
-> ⚠️ **Hermes 安全策略注意**：`sudo sed -i` 修改 `/etc/ssh/sshd_config` 可能被安全策略拦截（判定为"in-place edit of system config"）。拦截后**不要重试**——在报告中列出修复命令供用户手动执行即可。`sudo tee -a` 和 `sudo systemctl restart ssh` 通常不受影响。
->
-> ⚠️ 修改 SSH 配置前先确保当前 SSH 会话不会中断（例如：用 screen/tmux 或开第二个窗口测试）。`PermitRootLogin` 和 `PasswordAuthentication` 是最高优先级的修复项。
+> ⚠️ 修改 SSH 配置前先确保当前会话不会中断（screen/tmux 或开第二窗口测试）。`PermitRootLogin` 和 `PasswordAuthentication` 是最高优先级修复项。
 
 ### Phase 4: SSH 暴力破解检测
-
-> ⚠️ **Ubuntu 服务名称**：Ubuntu 的 SSH 服务名是 `ssh`，不是 `sshd`。以下示例使用 `ssh`，CentOS/RHEL 需改为 `sshd`。不确定时运行 `systemctl list-units | grep ssh` 确认。
 
 ```bash
 # 最近24小时的失败登录（Ubuntu 用 ssh，CentOS 用 sshd）
@@ -197,7 +162,7 @@ sudo fail2ban-client status sshd 2>/dev/null || echo "fail2ban not installed"
 
 ### Phase 5: 恶意进程 & Rootkit 扫描
 
-> ⚠️ **必须拆分为独立 terminal 调用**——不要把多个检查合并到一个 bash 块中。Hermes terminal 工具会将 `&&` 误解析为后台操作符（`&`），导致 "Foreground command uses '&' backgrounding" 错误。每组检查用独立的 `terminal()` 调用。
+> ⚠️ 以下每组检查必须用独立的 `terminal()` 调用（不要合并到一个 bash 块）。详见「注意事项 > Hermes 安全策略限制」。
 
 ```bash
 # 检查 1：标准恶意软件特征（独立调用）
@@ -306,7 +271,7 @@ sudo journalctl -p 3 --since "24 hours ago" --no-pager 2>&1 | tail -20
 
 ### Phase 10: Docker 安全检查
 
-> ⚠️ **Docker 检查必须拆分为独立 terminal 调用**。`if/else/fi` 块在 Hermes terminal 工具中会因 bash `eval` 包装器而报语法错误（`else` token error）。先用 `command -v docker` 判断是否安装，再分步执行各项检查。
+> ⚠️ Docker 检查必须拆分为独立 `terminal()` 调用（`if/else/fi` 会触发 eval 语法错误）。详见「注意事项 > Hermes 安全策略限制」。
 
 ```bash
 # 步骤 1：检查 Docker 是否安装（独立调用）
@@ -487,6 +452,55 @@ fi
 
 ---
 
+### Phase 19: TLS 证书过期检查
+
+```bash
+# 检查常见证书路径的过期时间
+CERTS_FOUND=0
+for cert_dir in /etc/letsencrypt/live /etc/ssl/certs; do
+  if [ -d "$cert_dir" ]; then
+    find "$cert_dir" -name "*.pem" -o -name "*.crt" 2>/dev/null | while read cert; do
+      if openssl x509 -checkend 2592000 -noout -in "$cert" 2>/dev/null; then
+        : # 证书30天内不过期
+      else
+        EXPIRY=$(openssl x509 -enddate -noout -in "$cert" 2>/dev/null | cut -d= -f2)
+        echo "WARN: 即将过期: $cert (过期时间: $EXPIRY)"
+        CERTS_FOUND=1
+      fi
+    done
+  fi
+done
+[ "$CERTS_FOUND" -eq 0 ] && echo "TLS: 未发现即将过期的证书（或未配置证书）"
+
+# 单独检查 snakeoil 证书（Ubuntu 默认）
+if [ -f /etc/ssl/certs/ssl-cert-snakeoil.pem ]; then
+  openssl x509 -checkend 2592000 -noout -in /etc/ssl/certs/ssl-cert-snakeoil.pem 2>/dev/null && echo "snakeoil: 30天内安全" || echo "WARN: snakeoil 证书即将过期"
+fi
+```
+
+- Let's Encrypt 证书 30 天内过期 → ⚠️ WARN
+- 证书已过期 → ❌ CRITICAL
+- 未找到任何证书 → ✅ INFO（无需评分）
+
+### Phase 20: 自动更新配置检查
+
+```bash
+# unattended-upgrades 是否安装
+dpkg -l unattended-upgrades 2>/dev/null | grep -E "^ii" && echo "unattended-upgrades: installed" || echo "unattended-upgrades: not installed"
+
+# 是否活跃
+systemctl is-active unattended-upgrades 2>/dev/null || echo "unattended-upgrades: not running"
+
+# 自动安全更新配置
+cat /etc/apt/apt.conf.d/20auto-upgrades 2>/dev/null || echo "(配置文件不存在)"
+```
+
+- unattended-upgrades 已安装且活跃 → ✅
+- 已安装但未运行 → ⚠️ WARN
+- 未安装 → ⚠️ WARN（建议安装以自动接收安全更新）
+
+---
+
 ## 评分系统
 
 ### 逐相位权重表（直接使用，无需再查参考文件）
@@ -497,7 +511,7 @@ fi
 | 2. 端口审计 | 6% | ✅=2, ⚠️=1, ❌=0 |
 | 3. SSH 加固 | 7.5% | **任何 ❌ CRITICAL → 整个 Phase = 0/2**（不取平均） |
 | 4. SSH 暴力破解 | 7.5% | ≤500+fail2ban→✅, 500-2000+fail2ban→⚠️, >2000+fail2ban→⚠️, 无fail2ban+>100→❌ |
-| 5. 恶意进程 | 20% | ✅=2, ⚠️=1, ❌=0 |
+| 5. 恶意进程 | 17.5% | ✅=2, ⚠️=1, ❌=0 |
 | 6. 用户审计 | 5% | ✅=2, ⚠️=1, ❌=0 |
 | 7. SUID/SGID | 5% | ✅=2, ⚠️=1, ❌=0 |
 | 8. Crontab | 5% | ✅=2, ⚠️=1, ❌=0 |
@@ -511,6 +525,8 @@ fi
 | 16. SSH 密钥 | 2.5% | ✅=2, ⚠️=1, ❌=0 |
 | 17. 系统更新 | 2.5% | ✅=2, ⚠️=1, ❌=0 |
 | 18. Auditd | 2.5% | ✅=2, ⚠️=1, ❌=0 |
+| 19. TLS 证书 | 1.5% | 证书过期→❌, 30天内过期→⚠️, 无证书/正常→✅ |
+| 20. 自动更新 | 1% | 已安装且活跃→✅, 已安装未运行→⚠️, 未安装→⚠️ |
 
 ### 加权公式
 
@@ -559,7 +575,7 @@ total = sum(all phase_contributions), rounded to integer
 
 ```
 ╔═══════════════════════════════════════════════════╗
-║        🛡️ 服务器安全健康报告 v2.1.0                ║
+║        🛡️ 服务器安全健康报告 v2.6.0                ║
 ╚═══════════════════════════════════════════════════╝
 
 📊 安全评分: 88/100 — ⚠️ NEEDS ATTENTION
@@ -592,7 +608,7 @@ total = sum(all phase_contributions), rounded to integer
   2. [MED] 8 个待更新软件包
   3. [LOW] SELinux disabled — 考虑启用
 
-📋 汇总: 18 项检查，14✅/3⚠️/1❌。安全状态可接受，建议修复中风险项。
+📋 汇总: 20 项检查，16✅/3⚠️/1❌。安全状态可接受，建议修复中风险项。
 ```
 
 ---
@@ -651,15 +667,14 @@ hermes cron create --name "紧急安全监控" \
 - `hermes skills check` **不会**检查本 skill 的更新（只检查 `official` 和 `builtin` 来源）
 - `hermes skills update` **不会**更新本 skill
 - 如需更新，需手动对比远程仓库（如有）或直接编辑 `~/.hermes/skills/security-health-check/SKILL.md`
-- 版本号在 SKILL.md frontmatter 的 `version` 字段中维护（当前: 2.5.0）
+- 版本号在 SKILL.md frontmatter 的 `version` 字段中维护（当前: 2.6.0）
 
 与之对比：`hermes-agent` 是 `builtin` 来源，随 Hermes 核心更新；`pixel-art`、`creative-ideation` 等是 `official` 来源，通过 `hermes skills update` 自动更新。
 
 ### Watchdog 脚本陷阱
 
-- **`no_agent` cron 脚本写入 `/var/log/` 权限被拒**：Hermes `no_agent` cron 脚本以当前用户身份运行，没有继承 sudo 上下文。脚本中 `echo "..." >> /var/log/xxx.log` 会因 Permission denied 失败，exit code 为 1，**Hermes 会把 stderr 当作消息发送给用户**（表现为"明明没有异常却收到了通知"）。修复：所有写入系统路径的 echo 必须用 `echo "..." | sudo tee -a /var/log/xxx.log > /dev/null` 代替 `>>` 重定向。诊断方法：检查 `~/.hermes/cron/output/<job_id>/` 下最近的 `.md` 文件，看是否有 `Permission denied` 错误。相关 commit: `ssh-bruteforce-guard/scripts/monitor.sh`。
-- **静默 Watchdog 模式**：高频定时监控脚本（每小时/每30分钟）应默认静默——无异常时 stdout 为空（不发送通知），只在检测到问题时才输出。实现方式：正常路径 `exit 0` 且不 echo 到 stdout，异常路径才 echo 到 stdout。本地日志用 `sudo tee -a` 始终记录，便于事后排查。用户明确表示不希望"每小时都收到消息"，只在有新封禁/新异常时通知。
-- **`find` + `set -e` 静默退出**：`emergency_monitor.sh` 使用 `set -euo pipefail`。`find` 命令在找不到匹配文件时返回 exit code 1，会被 `set -e` 捕获导致脚本**静默退出**（无任何输出、无错误信息）。修复：所有 `find` 赋值命令必须加 `|| true`，例如 `BAD_SUID=$(find /tmp ... -perm -4000 -type f 2>/dev/null || true)`。调试此类问题时，临时将 `set -euo pipefail` 改为 `set -uo pipefail`（去掉 `-e`）可快速定位是否是 `set -e` 导致的。
+- **权限 & 静默模式**：`no_agent` cron 脚本以当前用户运行，写入 `/var/log/` 会 Permission denied（用 `sudo tee -a` 代替 `>>`）。高频脚本应默认静默——无异常时 stdout 为空不发送通知。详见 `references/no_agent-cron-script-patterns.md`。
+- **`find` + `set -e` 静默退出**：`emergency_monitor.sh` 使用 `set -euo pipefail`，`find` 无匹配时 exit code 1 会被 `set -e` 捕获导致脚本静默退出。修复：所有 `find` 赋值命令加 `|| true`。调试时临时去掉 `-e` 可快速定位。
 - `ufw status` 可能在云服务器上返回 `Status: inactive`（云厂商使用 iptables/nftables）。配合 `iptables -L -n` 交叉验证。
 - `journalctl` 需要 sudo 权限。如果没有 passwordless sudo，跳过 journalctl 相关检查。
 - `fail2ban` 为可选依赖。未安装时不影响其他检查。
@@ -692,3 +707,6 @@ hermes cron create --name "紧急安全监控" \
 - 暴露的 /etc/shadow 哈希值绝不在输出中展示——只检查空密码和锁定状态。
 - 如果检查脚本被用于 cron，确保 sudo 策略文件 (emergency-monitor) 的最小权限原则（`NOPASSWD: /usr/bin/journalctl` 而不是 `ALL`）。
 - 完整的 `no_agent` cron 脚本编写陷阱（权限、静默模式、日志写入）见 `references/no_agent-cron-script-patterns.md`。
+- 更多 bash 监控脚本模式（SSH 服务名自动检测、PCRE 转义、awk 替代 bc、重启防重入、恶意进程特征库、OOM/k 僵尸检测）见 `references/bash-monitoring-script-patterns.md`。
+
+更多 bash 监控脚本模式（SSH 服务名自动检测、PCRE 转义、awk 替代 bc、重启防重入、find + set -e 陷阱）见 `references/bash-monitoring-script-patterns.md`。

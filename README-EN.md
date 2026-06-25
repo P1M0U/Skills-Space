@@ -10,8 +10,8 @@ Production-grade Hermes Agent skills repository — maintained by [P1M0U](https:
 
 | Skill | Version | Description |
 |-------|---------|-------------|
-| [🤖 hermes-health-check](./hermes-health-check/) | v2.0.0 | Production-grade Hermes Agent health check — 8-phase diagnostics, weighted scoring, watchdog cron monitoring |
-| [🛡️ security-health-check](./security-health-check/) | v2.0.0 | Production-grade server security audit — 18 CIS-aligned checks, SSH hardening, malware scan, Docker security |
+| [🤖 hermes-health-check](./hermes-health-check/) | v2.1.0 | Production-grade Hermes Agent health check — 8-phase diagnostics, weighted scoring, watchdog cron monitoring |
+| [🛡️ security-health-check](./security-health-check/) | v2.6.0 | Production-grade server security audit — 20 CIS-aligned checks, SSH hardening, malware scan, Docker security, TLS certificate check |
 
 ---
 
@@ -53,13 +53,13 @@ hermes cron create --name health-watchdog \
 
 ## 🛡️ security-health-check
 
-**Production-grade server security audit** covering **18 inspection domains**:
+**Production-grade server security audit** covering **20 inspection domains**:
 
 | Phase | Check | Severity |
 |-------|-------|----------|
 | 1 | Firewall Status (UFW / iptables / nftables) | 🔴 CRITICAL |
 | 2 | Listening Port Audit (exposed services) | 🟠 WARN |
-| 3 | SSH Hardening (7 CIS baselines) | 🔴 CRITICAL |
+| 3 | SSH Hardening (7 CIS baselines + socket activation) | 🔴 CRITICAL |
 | 4 | SSH Brute Force Detection (Top 10 IP + fail2ban) | 🔴 CRITICAL |
 | 5 | Malware & Rootkit Scan | 🔴 CRITICAL |
 | 6 | User Account Audit (UID 0, empty passwords, sudo) | 🔴 CRITICAL |
@@ -75,14 +75,17 @@ hermes cron create --name health-watchdog \
 | 16 | SSH Authorized Keys Audit | 🟠 WARN |
 | 17 | System Updates Status | 🟠 WARN |
 | 18 | Auditd Status | ℹ️ INFO |
+| 19 | **TLS Certificate Expiry** *(new v2.6.0)* | 🟠 WARN |
+| 20 | **Auto-Update Configuration** *(new v2.6.0)* | ℹ️ INFO |
 
 ### Features
 
-- ✅ **Weighted Scoring System** (0-100) — All 18 items weighted by severity
+- ✅ **Weighted Scoring System** (0-100) — All 20 items weighted by severity
 - ✅ **Dual Watchdog Modes** — 30-min emergency monitor (0 token) + full daily check at 10:00/22:00
 - ✅ **CIS Benchmark Aligned** — SSH config and kernel params validated against CIS standards
 - ✅ **Configurable Thresholds** — via `references/config.yaml`
 - ✅ **fail2ban Integration** — auto-detect fail2ban and downgrade risk level
+- ✅ **Smart SSH Detection** — auto-detects `ssh` vs `sshd` service name (Ubuntu/CentOS)
 
 ### Quick Start
 

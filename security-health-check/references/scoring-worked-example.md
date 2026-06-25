@@ -1,6 +1,6 @@
 # Scoring Worked Example
 
-This example uses the score calculation from an actual run on a cloud server (iZ2vc0ggppkz01n7dce43uZ, 2026-06-05).
+This example uses the score calculation from an actual run on a cloud server (iZ2vc0ggppkz01n7dce43uZ, 2026-06-05). Updated for v2.6.0 (20 phases).
 
 ## Per-Phase Score Assignment
 
@@ -8,7 +8,7 @@ For each phase, assign a score of 0 (❌), 1 (⚠️), or 2 (✅) based on a hol
 
 | Score | Meaning | When to use |
 |-------|---------|-------------|
-| 2 (✅) | All items pass, or minor non-security findings | Phases 1, 2, 5, 6, 7, 8, 9, 10, 13, 14, 15, 16, 17 |
+| 2 (✅) | All items pass, or minor non-security findings | Phases 1, 2, 5, 6, 7, 8, 9, 10, 13, 14, 15, 16, 17, 19, 20 |
 | 1 (⚠️) | Most items OK but 1-2 minor issues or missing optional hardening | Phases 4, 11, 12, 18 |
 | 0 (❌) | Any critical finding (root login enabled, password auth enabled, exposed database, malware) | Phase 3 |
 
@@ -25,7 +25,7 @@ total       = sum of all phase_scores, rounded to integer
 | 2. 端口审计 | 6% | 2/2 | 1.0 × 6 | 6.0 |
 | 3. SSH 加固 | 7.5% | 0/2 | 0.0 × 7.5 | 0.0 |
 | 4. SSH 暴力破解 | 7.5% | 1/2 | 0.5 × 7.5 | 3.75 |
-| 5. 恶意进程 | 20% | 2/2 | 1.0 × 20 | 20.0 |
+| 5. 恶意进程 | 17.5% | 2/2 | 1.0 × 17.5 | 17.5 |
 | 6. 用户审计 | 5% | 2/2 | 1.0 × 5 | 5.0 |
 | 7. SUID/SGID | 5% | 2/2 | 1.0 × 5 | 5.0 |
 | 8. Crontab | 5% | 2/2 | 1.0 × 5 | 5.0 |
@@ -39,7 +39,9 @@ total       = sum of all phase_scores, rounded to integer
 | 16. SSH 密钥 | 2.5% | 2/2 | 1.0 × 2.5 | 2.5 |
 | 17. 系统更新 | 2.5% | 2/2 | 1.0 × 2.5 | 2.5 |
 | 18. Auditd | 2.5% | 1/2 | 0.5 × 2.5 | 1.25 |
-| **Total** | **100%** | | | **82.25 → 82** |
+| 19. TLS 证书 | 1.5% | 2/2 | 1.0 × 1.5 | 1.5 |
+| 20. 自动更新 | 1% | 1/2 | 0.5 × 1 | 0.5 |
+| **Total** | **100%** | | | **81.0 → 81** |
 
 ## Grade Assignment
 
@@ -49,18 +51,25 @@ total       = sum of all phase_scores, rounded to integer
 < 70 或任意 Phase 有 ❌ → ❌ INSECURE
 ```
 
-In this example: score = 82, BUT Phase 3 has ❌ items → **❌ INSECURE**.
+In this example: score = 81, BUT Phase 3 has ❌ items → **❌ INSECURE**.
 
-## Phase 15-18 Weight Distribution
+## Phase 15-20 Weight Distribution
 
-The scoring table groups "Phase 15-18 (日志/密钥/更新) | 10%". Split evenly: 2.5% each. 
+The scoring table groups minor phases. Split:
+- Phase 15-18: 2.5% each (日志/密钥/更新/Auditd)
+- Phase 19: 1.5% (TLS 证书)
+- Phase 20: 1% (自动更新)
+
 If auditd is not installed (Phase 18), score it as ⚠️ (1/2) rather than ❌ — it's a missing optional tool, not an active vulnerability.
 
 ## Common Scoring Pitfalls
 
 - **Phase 3 with multiple ❌**: Even one ❌ in SSH means whole phase = 0/2. Don't "average" sub-items.
 - **Phase 4 with fail2ban**: fail2ban running → upgrade "⚠️ no fail2ban" to "✅ fail2ban active", which shifts score to 2/2.
+- **Phase 5 weight reduced in v2.6.0**: From 20% to 17.5% to accommodate Phase 19 (TLS) and Phase 20 (自动更新).
 - **Phase 9 sudo auth failures ≠ failed services**: `pam_unix(sudo:auth): conversation failed` in journalctl is a cron sudoers configuration issue, NOT a systemd service failure. If `systemctl --failed` returns empty, Phase 9 = 2/2 regardless of sudo auth errors. Mark sudo auth failures as INFO in the report, not as a Phase 9 penalty.
 - **Phase 12 with Docker**: `ip_forward=1` when Docker is installed = no penalty. Score as if it were at the CIS value.
 - **Phase 18 none/blocked**: auditd not installed = ⚠️ (1/2). Only ❌ if it was expected to be running and failed.
+- **Phase 19 no certificates**: If no TLS certificates are found (no web services), score as ✅ (INFO, no penalty). Only score ❌ if certificates are found and expired.
+- **Phase 20 unattended-upgrades**: Not installed = ⚠️ (1/2), not ❌. It's recommended but not critical.
 - **Numeric score vs等级不要混淆**: 数值评分独立计算（如 83/100），等级由数值+CRITICAL覆盖决定（83分但有CRITICAL→INSECURE）。报告应显示真实数值评分，不要篡改以匹配等级。

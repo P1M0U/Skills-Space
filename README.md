@@ -10,8 +10,8 @@ Hermes Agent 生产级技能仓库 — 由 [P1M0U](https://github.com/P1M0U) 维
 
 | 技能 | 版本 | 描述 |
 |------|------|------|
-| [🤖 hermes-health-check](./hermes-health-check/) | v2.0.0 | Hermes Agent 生产级健康检查 — 8 阶段诊断、加权评分、Watchdog 定时监控 |
-| [🛡️ security-health-check](./security-health-check/) | v2.3.0 | 服务器生产级安全审计 — 18 项 CIS 级别检查、SSH 加固、恶意进程扫描、Docker 安全 |
+| [🤖 hermes-health-check](./hermes-health-check/) | v2.1.0 | Hermes Agent 生产级健康检查 — 8 阶段诊断、加权评分、Watchdog 定时监控 |
+| [🛡️ security-health-check](./security-health-check/) | v2.6.0 | 服务器生产级安全审计 — 20 项 CIS 级别检查、SSH 加固、恶意进程扫描、Docker 安全、TLS 证书检查 |
 | [🔒 ssh-bruteforce-guard](./ssh-bruteforce-guard/) | v1.0.0 | SSH暴力破解自动封禁监控 — 检测每小时攻击超过阈值的IP，自动通过fail2ban和ufw封禁 |
 
 ---
@@ -44,14 +44,16 @@ hermes cron create --name health-watchdog \
 
 ## 🛡️ security-health-check
 
-**生产级服务器安全审计**，覆盖 **18 个安全检查领域**：
+**生产级服务器安全审计**，覆盖 **20 个安全检查领域**：
 
 - 防火墙状态、监听端口审计
-- SSH 安全加固（7 项 CIS 基线）
+- SSH 安全加固（7 项 CIS 基线）+ Socket 激活诊断
 - SSH 暴力破解检测、恶意进程 & Rootkit 扫描
 - 用户账户审计、SUID/SGID 提权攻击检测
 - Crontab 安全检查、Docker 安全检查
-- 内核参数加固、系统更新状态等
+- SELinux / AppArmor、内核参数加固
+- 磁盘 & Inode、内存 & Swap、系统更新状态
+- **[新增 v2.6.0]** TLS 证书过期检查、自动更新配置检查
 
 ### 快速开始
 
