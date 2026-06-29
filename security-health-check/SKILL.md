@@ -1,7 +1,7 @@
 ---
 name: security-health-check
 description: "Production-grade server security health check — 20 phases covering firewall, ports, SSH hardening, brute force, malware/rootkit, user audit, SUID, crontab, systemd, Docker, SELinux/AppArmor, kernel hardening, disk/inode, memory, login logs, SSH keys, system updates, auditd, TLS certificates, and unattended-upgrades. Includes scoring system, interactive mode, and no-agent cron watchdog."
-version: 2.6.0
+version: 2.6.1
 platforms: [linux]
 metadata:
   hermes:
@@ -146,10 +146,32 @@ lastb 2>/dev/null | head -10
 sudo fail2ban-client status sshd 2>/dev/null || echo "fail2ban not installed"
 ```
 
+**fail2ban 配置审计（关键！）：**
+
+```bash
+# 检查 fail2ban 实际使用的 bantime/maxretry/findtime
+sudo fail2ban-client get sshd bantime 2>/dev/null
+sudo fail2ban-client get sshd maxretry 2>/dev/null
+sudo fail2ban-client get sshd findtime 2>/dev/null
+
+# 检查是否有自定义 jail.local
+cat /etc/fail2ban/jail.local 2>/dev/null || echo "(无自定义配置，使用默认值)"
+
+# 检查当前封禁状态
+sudo fail2ban-client status sshd 2>/dev/null
+```
+
+> ⚠️ **fail2ban 默认值陷阱**：`jail.conf` 默认 `bantime=10m`、`maxretry=5`。这意味着攻击者被封 10 分钟后自动解封，可以反复回来。对于持续性暴力破解（如本服务器 20,000+ 次/天），默认配置几乎无效。**发现 bantime ≤ 10m 时应标记为 ⚠️ WARN**，即使 fail2ban "在运行"。推荐配置：`bantime=24h, maxretry=3, findtime=10m`。
+
+**SSH 攻击与 CPU 使用率的关联：**
+
+SSH 暴力破解会直接导致 CPU 升高——每次 SSH 连接握手需要 Diffie-Hellman 密钥交换（CPU 密集型加密运算）。当攻击量达到数千次/天时，CPU 使用率可飙升至 80%+。**诊断路径**：用户报告 CPU 高 → 检查 `auth.log` 中 `Failed password` 数量 → 如果 >1000 次/天，SSH 攻击很可能是主因。即使 fail2ban 在运行，大量并发连接仍会在被封禁前消耗 CPU。
+
 阈值：
 - > 20 次/24h → ⚠️ WARN
 - > 100 次/24h → ❌ CRITICAL
 - 有 fail2ban 且正常运行 → 风险等级降一级（❌ 降为 ⚠️，⚠️ 降为 ✅）
+- **但 fail2ban bantime ≤ 10m → 不降级**（配置太宽松，实际防护效果差）
 
 **极端攻击量场景（1000+ 次/24h）的评分决策：**
 即使 fail2ban 活跃，攻击量达到四位数时 fail2ban 只能延缓而非消除风险（攻击者不断换 IP）。评分规则：
@@ -158,6 +180,8 @@ sudo fail2ban-client status sshd 2>/dev/null || echo "fail2ban not installed"
 - > 2000 次 + fail2ban 活跃 → ⚠️ 1/2（仍优于 ❌，但需报告攻击规模）
 - 无 fail2ban + > 100 次 → ❌ 0/2
 
+> **已知可用的 jail.local 模板**：见 `templates/jail.local`（bantime=24h, maxretry=5, findtime=10m, port=2222, backend=systemd）。部署时注意 port 必须匹配实际 SSH 端口（非默认22的服务器尤其要改），然后 `sudo systemctl restart fail2ban`。
+>
 > 深度分析（按时间范围、攻击类型分类、IP/用户名统计）见 `references/ssh-brute-force-log-analysis.md`。当用户要求分析特定时间段的攻击（如"昨晚"、"过去3天"）时，使用该参考文件中的方法。
 
 ### Phase 5: 恶意进程 & Rootkit 扫描
@@ -456,13 +480,13 @@ fi
 
 ```bash
 # 检查常见证书路径的过期时间
+# ⚠️ 将 openssl stdout 重定向到 /dev/null，否则每个正常证书都会输出
+# "Certificate will not expire"，/etc/ssl/certs/ 下可能有上百个证书
 CERTS_FOUND=0
 for cert_dir in /etc/letsencrypt/live /etc/ssl/certs; do
   if [ -d "$cert_dir" ]; then
     find "$cert_dir" -name "*.pem" -o -name "*.crt" 2>/dev/null | while read cert; do
-      if openssl x509 -checkend 2592000 -noout -in "$cert" 2>/dev/null; then
-        : # 证书30天内不过期
-      else
+      if ! openssl x509 -checkend 2592000 -noout -in "$cert" >/dev/null 2>&1; then
         EXPIRY=$(openssl x509 -enddate -noout -in "$cert" 2>/dev/null | cut -d= -f2)
         echo "WARN: 即将过期: $cert (过期时间: $EXPIRY)"
         CERTS_FOUND=1
@@ -474,7 +498,7 @@ done
 
 # 单独检查 snakeoil 证书（Ubuntu 默认）
 if [ -f /etc/ssl/certs/ssl-cert-snakeoil.pem ]; then
-  openssl x509 -checkend 2592000 -noout -in /etc/ssl/certs/ssl-cert-snakeoil.pem 2>/dev/null && echo "snakeoil: 30天内安全" || echo "WARN: snakeoil 证书即将过期"
+  openssl x509 -checkend 2592000 -noout -in /etc/ssl/certs/ssl-cert-snakeoil.pem >/dev/null 2>&1 && echo "snakeoil: 30天内安全" || echo "WARN: snakeoil 证书即将过期"
 fi
 ```
 
@@ -575,7 +599,7 @@ total = sum(all phase_contributions), rounded to integer
 
 ```
 ╔═══════════════════════════════════════════════════╗
-║        🛡️ 服务器安全健康报告 v2.6.0                ║
+║        🛡️ 服务器安全健康报告 v2.6.1                ║
 ╚═══════════════════════════════════════════════════╝
 
 📊 安全评分: 88/100 — ⚠️ NEEDS ATTENTION
