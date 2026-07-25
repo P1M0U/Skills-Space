@@ -17,42 +17,42 @@ SSH暴力破解自动封禁监控 — 检测每小时攻击超过阈值的IP，�
 
 告诉你的 Hermes Agent：
 
-> 请帮我安装 ssh-bruteforce-guard skill，从 https://github.com/P1M0U/skills-space 仓库
+> 请帮我安装 ssh-bruteforce-guard skill，从 https://github.com/P1M0U/Skills-Space 仓库
 
 Agent 会自动执行：
 
 ```bash
 # 克隆仓库
-git clone https://github.com/P1M0U/skills-space.git /tmp/skills-space
+git clone https://github.com/P1M0U/Skills-Space.git /tmp/Skills-Space
 
 # 复制 skill 目录
-cp -r /tmp/skills-space/ssh-bruteforce-guard ~/.hermes/skills/security/
+cp -r /tmp/Skills-Space/ssh-bruteforce-guard ~/.hermes/skills/security/
 
 # 复制监控脚本
 mkdir -p ~/.hermes/scripts/ssh-guard
-cp /tmp/skills-space/ssh-bruteforce-guard/scripts/monitor.sh ~/.hermes/scripts/ssh-guard/
+cp /tmp/Skills-Space/ssh-bruteforce-guard/scripts/monitor.sh ~/.hermes/scripts/ssh-guard/
 chmod +x ~/.hermes/scripts/ssh-guard/monitor.sh
 
 # 清理
-rm -rf /tmp/skills-space
+rm -rf /tmp/Skills-Space
 ```
 
 ### 方式二：手动安装
 
 ```bash
 # 克隆仓库
-git clone https://github.com/P1M0U/skills-space.git /tmp/skills-space
+git clone https://github.com/P1M0U/Skills-Space.git /tmp/Skills-Space
 
 # 复制 skill 目录
-cp -r /tmp/skills-space/ssh-bruteforce-guard ~/.hermes/skills/security/
+cp -r /tmp/Skills-Space/ssh-bruteforce-guard ~/.hermes/skills/security/
 
 # 复制监控脚本
 mkdir -p ~/.hermes/scripts/ssh-guard
-cp /tmp/skills-space/ssh-bruteforce-guard/scripts/monitor.sh ~/.hermes/scripts/ssh-guard/
+cp /tmp/Skills-Space/ssh-bruteforce-guard/scripts/monitor.sh ~/.hermes/scripts/ssh-guard/
 chmod +x ~/.hermes/scripts/ssh-guard/monitor.sh
 
 # 清理
-rm -rf /tmp/skills-space
+rm -rf /tmp/Skills-Space
 ```
 
 ## 🚀 使用

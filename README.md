@@ -131,27 +131,27 @@ hermes cron create --name "优秀开源项目推荐（周六）" \
 
 告诉你的 Hermes Agent：
 
-> 请帮我安装 skills-space 仓库中的 hermes-health-check skill
+> 请帮我安装 Skills-Space 仓库中的 hermes-health-check skill
 
 ### 方式二：手动安装
 
 ```bash
 # 克隆仓库
-git clone https://gitee.com/P1M0U/skills-space.git /tmp/skills-space
+git clone https://gitee.com/P1M0U/Skills-Space.git /tmp/Skills-Space
 
 # 安装所需 skill
-cp -r /tmp/skills-space/hermes-health-check ~/.hermes/skills/
-cp -r /tmp/skills-space/security-health-check ~/.hermes/skills/
+cp -r /tmp/Skills-Space/hermes-health-check ~/.hermes/skills/
+cp -r /tmp/Skills-Space/security-health-check ~/.hermes/skills/
 
 # 清理
-rm -rf /tmp/skills-space
+rm -rf /tmp/Skills-Space
 ```
 
 ### 方式三：给智能体的安装提示词
 
 ```bash
 # 复制以下内容发给你的 AI Agent，它会自动完成安装
-curl -fsSL https://gitee.com/P1M0U/skills-space/raw/main/hermes-health-check/SKILL.md -o ~/.hermes/skills/hermes-health-check/SKILL.md
+curl -fsSL https://gitee.com/P1M0U/Skills-Space/raw/main/hermes-health-check/SKILL.md -o ~/.hermes/skills/hermes-health-check/SKILL.md
 ```
 
 ---

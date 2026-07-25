@@ -21,32 +21,32 @@
 
 告诉你的 Hermes Agent：
 
-> 请帮我安装 hermes-health-check skill，从 https://gitee.com/P1M0U/skills-space 仓库
+> 请帮我安装 hermes-health-check skill，从 https://gitee.com/P1M0U/Skills-Space 仓库
 
 Agent 会自动执行：
 
 ```bash
 # 克隆仓库
-git clone https://gitee.com/P1M0U/skills-space.git /tmp/skills-space
+git clone https://gitee.com/P1M0U/Skills-Space.git /tmp/Skills-Space
 
 # 复制 skill 目录
-cp -r /tmp/skills-space/hermes-health-check ~/.hermes/skills/
+cp -r /tmp/Skills-Space/hermes-health-check ~/.hermes/skills/
 
 # 清理
-rm -rf /tmp/skills-space
+rm -rf /tmp/Skills-Space
 ```
 
 ### 方式二：手动安装
 
 ```bash
 # 克隆仓库
-git clone https://gitee.com/P1M0U/skills-space.git /tmp/skills-space
+git clone https://gitee.com/P1M0U/Skills-Space.git /tmp/Skills-Space
 
 # 复制 skill 目录
-cp -r /tmp/skills-space/hermes-health-check ~/.hermes/skills/
+cp -r /tmp/Skills-Space/hermes-health-check ~/.hermes/skills/
 
 # 清理
-rm -rf /tmp/skills-space
+rm -rf /tmp/Skills-Space
 ```
 
 ## 🚀 使用

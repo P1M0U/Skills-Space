@@ -145,20 +145,20 @@ hermes cron create --name "weekly-oss-recommend" \
 
 Tell your Hermes Agent:
 
-> Please install the hermes-health-check skill from the skills-space repo
+> Please install the hermes-health-check skill from the Skills-Space repo
 
 ### Option 2: Manual install
 
 ```bash
 # Clone the repo
-git clone https://gitee.com/P1M0U/skills-space.git /tmp/skills-space
+git clone https://gitee.com/P1M0U/Skills-Space.git /tmp/Skills-Space
 
 # Install skills
-cp -r /tmp/skills-space/hermes-health-check ~/.hermes/skills/
-cp -r /tmp/skills-space/security-health-check ~/.hermes/skills/
+cp -r /tmp/Skills-Space/hermes-health-check ~/.hermes/skills/
+cp -r /tmp/Skills-Space/security-health-check ~/.hermes/skills/
 
 # Cleanup
-rm -rf /tmp/skills-space
+rm -rf /tmp/Skills-Space
 ```
 
 ---

@@ -33,36 +33,36 @@
 
 告诉你的 Hermes Agent：
 
-> 请帮我安装 security-health-check skill，从 https://github.com/P1M0U/skills-space 仓库
+> 请帮我安装 security-health-check skill，从 https://github.com/P1M0U/Skills-Space 仓库
 
 Agent 会自动执行：
 
 ```bash
 # 克隆仓库
-git clone https://github.com/P1M0U/skills-space.git /tmp/skills-space
+git clone https://github.com/P1M0U/Skills-Space.git /tmp/Skills-Space
 
 # 复制 skill 目录
-cp -r /tmp/skills-space/security-health-check ~/.hermes/skills/
+cp -r /tmp/Skills-Space/security-health-check ~/.hermes/skills/
 
 # 复制监控脚本（如果需要紧急监控）
 mkdir -p ~/.hermes/scripts
-cp /tmp/skills-space/security-health-check/scripts/emergency_monitor.sh ~/.hermes/scripts/
+cp /tmp/Skills-Space/security-health-check/scripts/emergency_monitor.sh ~/.hermes/scripts/
 
 # 清理
-rm -rf /tmp/skills-space
+rm -rf /tmp/Skills-Space
 ```
 
 ### 方式二：手动安装
 
 ```bash
 # 克隆仓库
-git clone https://github.com/P1M0U/skills-space.git /tmp/skills-space
+git clone https://github.com/P1M0U/Skills-Space.git /tmp/Skills-Space
 
 # 复制 skill 目录
-cp -r /tmp/skills-space/security-health-check ~/.hermes/skills/
+cp -r /tmp/Skills-Space/security-health-check ~/.hermes/skills/
 
 # 清理
-rm -rf /tmp/skills-space
+rm -rf /tmp/Skills-Space
 ```
 
 ## 🚀 使用
