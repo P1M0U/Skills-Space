@@ -11,5 +11,14 @@ health_check:
     crit_memory_mb: 2000
     known_reconnect_patterns:
       - "code=4009.*Session timed out"
+  profiles:
+    warn_disk_mb: 500
+    crit_disk_mb: 1000
+    warn_cache_mb: 200
+    crit_cache_mb: 500
+    warn_session_db_mb: 100
+    crit_session_db_mb: 500
+    warn_broken_skills: 1
+    crit_broken_skills: 5
   watchdog:
     report_threshold: "crit"

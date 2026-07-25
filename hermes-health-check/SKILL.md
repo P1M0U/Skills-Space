@@ -1,7 +1,7 @@
 ---
 name: hermes-health-check
-description: "Production-grade comprehensive health check for Hermes Agent — config, deps, API connectivity, system resources, gateway, network, security baseline, cron jobs, log hygiene, and platform adapters."
-version: 2.0.0
+description: "Production-grade comprehensive health check for Hermes Agent — config, deps, API connectivity, system resources, gateway, network, security baseline, cron jobs, log hygiene, platform adapters, and profiles isolation."
+version: 2.2.0
 platforms: [linux]
 metadata:
   hermes:
@@ -16,7 +16,7 @@ Use this when the user asks to check Hermes health, diagnose issues, verify ever
 or as a scheduled watchdog via cronjob.
 
 Supports two modes:
-- **Interactive mode** (default) — full 8-phase check with structured human-readable report
+- **Interactive mode** (default) — full 9-phase check with structured human-readable report
 - **Watchdog mode** (cron-friendly) — lightweight periodic check that only reports on status changes or failures
 
 ## Quick Start
@@ -152,7 +152,7 @@ Extract available providers from `hermes status` output first.
 DEEPSEEK_KEY=$(grep -oP '^DEEPSEEK_API_KEY=\K.*' ~/.hermes/.env 2>/dev/null | head -1)
 if [ -n "$DEEPSEEK_KEY" ]; then
   HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 10 \
-    -H "Authorization: Bearer $DEEPSEEK_KEY" \
+    -H "Authorization: Bearer ***" \
     https://api.deepseek.com/v1/models 2>&1)
   echo "DeepSeek API: HTTP $HTTP_CODE ($([ "$HTTP_CODE" = "200" ] && echo 'OK' || echo 'FAIL'))"
 fi
@@ -273,6 +273,133 @@ ip route show default 2>&1 | head -1
 nslookup api.deepseek.com 2>&1 | tail -3
 ```
 
+### Phase 9: Profile Health Check
+
+Check all Hermes profiles (including the default) for integrity, resource usage, and anomalies.
+
+```bash
+# List all profiles
+ls -d ~/.hermes/profiles/*/ 2>/dev/null | xargs -I{} basename {}
+
+# Default profile location
+echo "Default: ~/.hermes/"
+
+# Per-profile disk usage
+for d in ~/.hermes/profiles/*/; do
+    name=$(basename "$d")
+    size=$(du -sh "$d" 2>/dev/null | cut -f1)
+    echo "$name: $size"
+done
+
+# Per-profile breakdown: config, skills, memories, sessions, logs, home/cache
+for d in ~/.hermes/profiles/*/; do
+    name=$(basename "$d")
+    echo "=== $name ==="
+    for sub in skills memories sessions logs home/.cache home/.npm cron; do
+        target="$d$sub"
+        if [ -d "$target" ] || [ -f "$target" ]; then
+            s=$(du -sh "$target" 2>/dev/null | cut -f1)
+            echo "  $sub: $s"
+        fi
+    done
+done
+
+# Check for broken skills per profile (no SKILL.md)
+for d in ~/.hermes/profiles/*/skills/*/; do
+    [ -d "$d" ] || continue
+    profile=$(echo "$d" | awk -F/ '{print $(NF-1)}')
+    skill=$(basename "$d")
+    [ ! -f "$d/SKILL.md" ] && echo "BROKEN: $profile/$skill (no SKILL.md)"
+done
+
+# Profile gateway status (if running)
+for d in ~/.hermes/profiles/*/; do
+    name=$(basename "$d")
+    pid_file="$d/../gateway_${name}.pid" 2>/dev/null
+    # Check via ps if profile has its own gateway process
+    ps aux 2>/dev/null | grep -v grep | grep "hermes.*--profile $name" | head -1
+done
+
+# Default profile large directories
+du -sh ~/.hermes/state-snapshots/ ~/.hermes/lsp/ ~/.hermes/node/ ~/.hermes/hermes-agent/ 2>/dev/null
+
+# --- Extended checks (v2.2.0 additions) ---
+
+# Per-profile config.yaml validity
+for d in ~/.hermes ~/.hermes/profiles/*/; do
+    name=$(basename "$d")
+    [ "$d" = "$HOME/.hermes/" ] && name="default"
+    cfg="$d/config.yaml"
+    if [ -f "$cfg" ]; then
+        python3 -c "import yaml; yaml.safe_load(open('$cfg'))" 2>/dev/null \
+            && echo "$name config.yaml: OK" \
+            || echo "$name config.yaml: INVALID YAML"
+    else
+        echo "$name config.yaml: MISSING"
+    fi
+done
+
+# Per-profile .env check (non-default profiles)
+for d in ~/.hermes/profiles/*/; do
+    name=$(basename "$d")
+    [ -f "$d/.env" ] && echo "$name .env: OK" || echo "$name .env: MISSING"
+done
+
+# Per-profile session DB integrity
+for db in ~/.hermes/state.db ~/.hermes/profiles/*/state.db; do
+    [ -f "$db" ] || continue
+    profile=$(echo "$db" | sed 's|.*/profiles/\([^/]*\)/.*|\1|; s|.*/\.hermes/state\.db|default|')
+    size=$(stat --format="%s" "$db" 2>/dev/null)
+    echo "$profile session.db: ${size:-?} bytes"
+    [ "${size:-0}" -gt 104857600 ] && echo "  ⚠ > 100MB"
+    result=$(sqlite3 "$db" "PRAGMA integrity_check;" 2>/dev/null)
+    [ "$result" != "ok" ] && echo "  ⚠ Integrity: $result"
+done
+
+# Cross-profile isolation: external symlinks
+find ~/.hermes/profiles/ -maxdepth 3 -type l 2>/dev/null | while read link; do
+    target=$(readlink -f "$link" 2>/dev/null)
+    profile=$(echo "$link" | awk -F/ '{print $(NF-2)}')
+    if [[ "$target" != "$HOME/.hermes/profiles/"* ]] && [[ "$target" != "/tmp/"* ]]; then
+        echo "⚠ $profile external symlink: $link -> $target"
+    fi
+done
+
+# Per-profile cron jobs
+for d in ~/.hermes/profiles/*/; do
+    name=$(basename "$d")
+    if [ -d "$d/cron/" ]; then
+        count=$(ls "$d/cron/" 2>/dev/null | wc -l)
+        echo "$name cron: $count jobs"
+    fi
+done
+```
+
+Check for:
+- Profiles with excessive disk usage (> 500MB = WARN, > 1GB = CRITICAL)
+- Broken skills (missing SKILL.md) per profile
+- Profile `home/.cache` and `home/.npm` bloat (safe to clean)
+- Profile logs growing unbounded
+- Profiles without gateway process when expected running
+- Orphaned profiles (no config.yaml or empty)
+- config.yaml present and valid YAML per profile (broken config = CRITICAL)
+- .env present for non-default profiles (missing = WARN, may use default credentials)
+- Session DB integrity per profile ( corruption = CRITICAL)
+- External symlinks crossing profile boundaries (isolation violation = WARN)
+- Cron jobs present per profile
+
+Thresholds per profile:
+| Check | WARNING | CRITICAL |
+|-------|---------|----------|
+| Disk usage | > 500MB | > 1GB |
+| config.yaml missing | - | Yes |
+| config.yaml invalid YAML | - | Yes |
+| .env missing (non-default) | Yes | - |
+| Broken skills (no SKILL.md) | >= 1 | >= 5 |
+| home/.cache bloat | > 200MB | > 500MB |
+| Session DB > 100MB | Yes | > 500MB |
+| External symlinks | >= 1 | - |
+
 ---
 
 ## Scoring System
@@ -281,23 +408,24 @@ Each check produces a numeric score. The overall health is computed as a weighte
 
 | Component | Weight |
 |-----------|--------|
-| Phase 1 (Hermes core) | 20% |
+| Phase 1 (Hermes core) | 18% |
 | Phase 2 (System) | 10% |
-| Phase 3 (Gateway) | 25% |
-| Phase 4 (Skills/Memory) | 10% |
-| Phase 5 (API) | 20% |
-| Phase 6 (Security) | 10% |
+| Phase 3 (Gateway) | 22% |
+| Phase 4 (Skills/Memory) | 8% |
+| Phase 5 (API) | 18% |
+| Phase 6 (Security) | 8% |
 | Phase 7 (Logs) | 3% |
 | Phase 8 (Env) | 2% |
+| Phase 9 (Profiles) | 11% |
 
 Each check yields 0 (CRITICAL), 1 (WARN), or 2 (OK). Weighted sum / max possible = health %.
 
 Final severity:
 | Score | Severity |
 |-------|----------|
-| >= 95% | **HEALTHY** check mark |
-| >= 75% | **NEEDS ATTENTION** warning |
-| < 75% | **UNHEALTHY** cross mark |
+| >= 95% | **HEALTHY** ✓ |
+| >= 75% | **NEEDS ATTENTION** ⚠ |
+| < 75% | **UNHEALTHY** ✗ |
 | Any CRITICAL check | Auto-downgrade to UNHEALTHY |
 
 ---
@@ -306,11 +434,56 @@ Final severity:
 
 After all phases complete, present a structured summary:
 
-See the full SKILL.md in the Hermes Agent skills directory for the complete output template with sample health report.
+```
+═══════════════════════════════════════════════════════════════
+          HERMES HEALTH CHECK REPORT
+          {timestamp}
+═══════════════════════════════════════════════════════════════
+
+OVERALL STATUS: {HEALTHY ✓ | NEEDS ATTENTION ⚠ | UNHEALTHY ✗}
+SCORE: {score}% ({weighted_points}/{max_points})
+
+───────────────────────────────────────────────────────────────
+PHASE 1: HERMES CORE                         [{score}/20]
+───────────────────────────────────────────────────────────────
+✓ Doctor: {x} passed, {y} warnings, {z} critical
+✓ Config: {status}
+✓ Gateway: {status}
+{list of any issues found}
+
+... (similar for phases 2-8) ...
+
+───────────────────────────────────────────────────────────────
+PHASE 9: PROFILES                            [{score}/11]
+───────────────────────────────────────────────────────────────
+✓ Profiles found: {n} (default + {m} named)
+✓ Total profile size: {size}
+✓ Broken skills: {n}
+✓ Profiles > 500MB: {list or "none"}
+✓ config.yaml valid: {n}/{total}
+✓ Session DB integrity: {n}/{total} passed
+✓ External symlinks: {n or "none"}
+{list of any issues found per profile}
+
+───────────────────────────────────────────────────────────────
+SUMMARY
+───────────────────────────────────────────────────────────────
+✓ Healthy: {n} checks
+⚠ Warning: {n} checks  
+✗ Critical: {n} checks
+
+TOP ISSUES (action items):
+1. {issue}
+2. {issue}
+...
+═══════════════════════════════════════════════════════════════
+```
 
 ---
 
 ## Watchdog Mode (Cron Scheduling)
+
+> **时区说明**：系统时区为 **Asia/Shanghai (CST, UTC+8)**，Hermes 直接按北京时间解释 cron 表达式。
 
 ### Option A: LLM-driven (default cron)
 
@@ -321,21 +494,55 @@ hermes cron create --name health-watchdog \
   --prompt "Run a full health check in watchdog mode. Only report if overall status is UNHEALTHY or if any CRITICAL check fails. If HEALTHY or NEEDS ATTENTION, stay silent."
 ```
 
+⚠️ **CRITICAL**: The `hermes-health-check` SKILL.md is ~450 lines (~25K tokens when loaded). In LLM-driven cron mode, the full skill content is injected into the system prompt, which can cause the API streaming to stall. If you see `[Errno 32] Broken pipe` with `stale_stream_kill` after 180s, the cron job is choking on the oversized context. **For daily scheduled health checks, prefer Option B (no_agent script) — zero tokens, no API dependency, no timeout risk.** If you must use Option A, pare the prompt down to a few lines of self-contained instructions and do NOT pass `--skill hermes-health-check`.
+
 ### Option B: no_agent script (lightweight, zero tokens)
 
-Uses the standalone shell script at `scripts/health_watchdog.sh`:
+Uses a standalone shell script. Two scripts are bundled with this skill:
+
+**`scripts/health_watchdog.sh`** — basic system-level watchdog (disk, memory, malware).
+
+**`scripts/feishu-gateway-watchdog.sh`** — enhanced for Feishu (or any) gateway deployments. Adds gateway service status check and gateway log error counting alongside disk/memory checks.
 
 ```bash
+# Basic watchdog (any platform)
 hermes cron create --name "health-watchdog-quiet" \
   --schedule "*/30 * * * *" \
   --script health_watchdog.sh \
   --no-agent
+
+# Gateway-aware watchdog (Feishu/TG/etc)
+hermes cron create --name "gateway-health" \
+  --schedule "0 8 * * *" \
+  --script feishu-gateway-watchdog.sh \
+  --no-agent
 ```
+
+⚠️ **Writing no_agent scripts is error-prone with `set -euo pipefail`.** See `references/no-agent-script-pitfalls.md` for the traps encountered in production: bare test-and-assign in functions (`[ expr ] && var` → silent exit when false), `grep -c || echo 0` producing two-line values instead of a single number, and empty-pipe edge cases. Always read that reference before authoring or debugging a no_agent script.
 
 ### Watchdog behavior
 - HEALTHY -> silent (no notification)
 - NEEDS ATTENTION -> silent (unless user asked for all reports)
 - UNHEALTHY -> full report delivered to configured channel
+
+### ⚠️ Critical Pitfall: Cron delivery when creating from CLI
+
+When using `hermes cron create` via the `cronjob` tool, **if the session is NOT a platform session** (e.g. you're in CLI, or inside another tool like terminal/execute_code), the `deliver` parameter defaults to `"local"` — meaning **no delivery to any external platform**. The job runs silently and nobody sees the results.
+
+**Fix**: Always explicitly pass `deliver` when creating health watchdog cronjobs from CLI:
+
+```python
+# If inside a Feishu session, omit deliver to auto-detect:
+cronjob(action='create', ..., schedule="0 8 * * *", skills=["hermes-health-check"], prompt="...")
+
+# If NOT inside the target platform (CLI, terminal, another tool), explicit deliver is REQUIRED:
+cronjob(action='create', ..., schedule="0 8 * * *", skills=["hermes-health-check"],
+        prompt="...", deliver="feishu:oc_acf63dc8b93a11a1d777f535f8844ab4")
+```
+
+To find the correct chat_id: check `grep -a "feishu.*chat" ~/.hermes/logs/gateway.log | tail -5` or inspect `gateway_state.json` for the home channel.
+
+See `references/gateway-longevity-assessment.md` for the methodology for checking if a gateway platform can run 7×24 continuously.
 
 ---
 
@@ -347,6 +554,10 @@ hermes cron create --name "health-watchdog-quiet" \
 - `ufw status` may be inactive on cloud VMs; fallback to `iptables -L -n`.
 - `journalctl` may require sudo. Skip gracefully if unavailable.
 - `sqlite3` may not be installed; skip DB integrity check.
+
+### Cron & Large Skills
+- **Don't load this skill into LLM-driven cron jobs.** The SKILL.md is ~25K tokens. When loaded via `--skill hermes-health-check`, the cron's system prompt balloons, and the API streaming stalls after 180s → `stale_stream_kill` → `[Errno 32] Broken pipe`. Always prefer **Option B (no_agent script)** for scheduled health checks.
+- If you see `Stream stale for 180s` followed by `[Errno 32] Broken pipe` in a cron job, the fix is NOT to increase timeouts — it's to switch to no_agent mode or write a self-contained prompt that doesn't load any skill.
 
 ### Platform Differences
 - macOS: No `free -h`, use `vm_stat`. No `ss`, use `lsof -i`.
