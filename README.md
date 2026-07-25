@@ -1,6 +1,6 @@
 # 🛠️ Skills Space
 
-Hermes Agent 生产级技能仓库 — 由 [P1M0U](https://github.com/P1M0U) 维护。
+Hermes Agent 生产级技能仓库 — 由 [P1M0U](https://gitee.com/P1M0U) 维护。
 
 > [English Version](./README-EN.md)
 
@@ -10,7 +10,7 @@ Hermes Agent 生产级技能仓库 — 由 [P1M0U](https://github.com/P1M0U) 维
 
 | 技能 | 版本 | 描述 |
 |------|------|------|
-| [🤖 hermes-health-check](./hermes-health-check/) | v2.1.0 | Hermes Agent 生产级健康检查 — 8 阶段诊断、加权评分、Watchdog 定时监控 |
+| [🤖 hermes-health-check](./hermes-health-check/) | v2.2.0 | Hermes Agent 生产级健康检查 — 9 阶段诊断、加权评分、Watchdog 定时监控 |
 | [🛡️ security-health-check](./security-health-check/) | v2.6.0 | 服务器生产级安全审计 — 20 项 CIS 级别检查、SSH 加固、恶意进程扫描、Docker 安全、TLS 证书检查 |
 | [🔒 ssh-bruteforce-guard](./ssh-bruteforce-guard/) | v1.0.0 | SSH暴力破解自动封禁监控 — 检测每小时攻击超过阈值的IP，自动通过fail2ban和ufw封禁 |
 | [🌟 weekly-oss-recommend](./weekly-oss-recommend/) | v1.0.0 | 每周优秀开源项目推荐 — 覆盖 Python AI Agent、Go、Vue3 等 5 个方向 28 个搜索关键词 |
@@ -19,7 +19,7 @@ Hermes Agent 生产级技能仓库 — 由 [P1M0U](https://github.com/P1M0U) 维
 
 ## 🤖 hermes-health-check
 
-**生产级 Hermes Agent 健康检查**，覆盖：
+**生产级 Hermes Agent 健康检查**，9 阶段诊断 + 加权评分：
 
 - **Phase 1:** Hermes 核心诊断（doctor / status / config check）
 - **Phase 2:** 系统资源（磁盘、Inode、内存、CPU 负载、进程健康）
@@ -29,16 +29,24 @@ Hermes Agent 生产级技能仓库 — 由 [P1M0U](https://github.com/P1M0U) 维
 - **Phase 6:** 安全基线（防火墙、SSH 配置、暴力破解检测、Crontab 审计）
 - **Phase 7:** 日志卫生（日志大小、轮转、存储用量）
 - **Phase 8:** 环境信息（内核、云平台、DNS、网络）
+- **Phase 9:** Profiles 完整性（config 校验、Session DB 完整性、跨 profile 隔离检测、缓存膨胀）
 
 ### 快速开始
 
 ```bash
 # 交互式检查（在 Hermes 会话中说 "健康检查"）
-# 定时 Watchdog（每 6 小时）
+
+# 定时 Watchdog（每 6 小时，LLM 驱动）
 hermes cron create --name health-watchdog \
   --schedule "0 */6 * * *" \
   --skill hermes-health-check \
   --prompt "Run full health check. Only report if UNHEALTHY."
+
+# 轻量脚本（每 30 分钟，0 token 消耗）
+hermes cron create --name health-watchdog-quiet \
+  --schedule "*/30 * * * *" \
+  --script health_watchdog.sh \
+  --no-agent
 ```
 
 ---
@@ -54,7 +62,7 @@ hermes cron create --name health-watchdog \
 - Crontab 安全检查、Docker 安全检查
 - SELinux / AppArmor、内核参数加固
 - 磁盘 & Inode、内存 & Swap、系统更新状态
-- **[新增 v2.6.0]** TLS 证书过期检查、自动更新配置检查
+- **[v2.6.0]** TLS 证书过期检查、自动更新配置检查
 
 ### 快速开始
 
@@ -119,33 +127,35 @@ hermes cron create --name "优秀开源项目推荐（周六）" \
 
 ## 🚀 部署指南
 
-将技能复制到目标 Hermes Agent 的 skills 目录：
+### 方式一：一键安装（推荐）
+
+告诉你的 Hermes Agent：
+
+> 请帮我安装 skills-space 仓库中的 hermes-health-check skill
+
+### 方式二：手动安装
 
 ```bash
-# 克隆仓库到服务器
-git clone https://github.com/P1M0U/skills-space.git /tmp/skills-space
+# 克隆仓库
+git clone https://gitee.com/P1M0U/skills-space.git /tmp/skills-space
 
-# 安装 hermes-health-check
-cp -r /tmp/skills-space/hermes-health-check ~/.hermes/skills/software-development/
-
-# 安装 security-health-check
+# 安装所需 skill
+cp -r /tmp/skills-space/hermes-health-check ~/.hermes/skills/
 cp -r /tmp/skills-space/security-health-check ~/.hermes/skills/
 
-# 安装 ssh-bruteforce-guard
-cp -r /tmp/skills-space/ssh-bruteforce-guard ~/.hermes/skills/security/
-mkdir -p ~/.hermes/scripts/ssh-guard
-# 需要手动创建监控脚本（见 ssh-bruteforce-guard/README.md）
-
-# 安装 weekly-oss-recommend
-cp -r /tmp/skills-space/weekly-oss-recommend ~/.hermes/skills/
+# 清理
+rm -rf /tmp/skills-space
 ```
 
-或者直接告诉 Hermes Agent：
+### 方式三：给智能体的安装提示词
 
-> 请帮我安装 skills-space 仓库中的 [skill名称] skill
+```bash
+# 复制以下内容发给你的 AI Agent，它会自动完成安装
+curl -fsSL https://gitee.com/P1M0U/skills-space/raw/main/hermes-health-check/SKILL.md -o ~/.hermes/skills/hermes-health-check/SKILL.md
+```
 
 ---
 
 ## 📄 License
 
-MIT
+[MIT](./LICENSE) — Copyright (c) 2026 P1M0U

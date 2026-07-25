@@ -1,6 +1,6 @@
 # 🛠️ Skills Space
 
-Production-grade Hermes Agent skills repository — maintained by [P1M0U](https://github.com/P1M0U).
+Production-grade Hermes Agent skills repository — maintained by [P1M0U](https://gitee.com/P1M0U).
 
 > [中文版本](./README.md)
 
@@ -10,14 +10,16 @@ Production-grade Hermes Agent skills repository — maintained by [P1M0U](https:
 
 | Skill | Version | Description |
 |-------|---------|-------------|
-| [🤖 hermes-health-check](./hermes-health-check/) | v2.1.0 | Production-grade Hermes Agent health check — 8-phase diagnostics, weighted scoring, watchdog cron monitoring |
+| [🤖 hermes-health-check](./hermes-health-check/) | v2.2.0 | Production-grade Hermes Agent health check — 9-phase diagnostics, weighted scoring, watchdog cron monitoring |
 | [🛡️ security-health-check](./security-health-check/) | v2.6.0 | Production-grade server security audit — 20 CIS-aligned checks, SSH hardening, malware scan, Docker security, TLS certificate check |
+| [🔒 ssh-bruteforce-guard](./ssh-bruteforce-guard/) | v1.0.0 | SSH brute-force auto-ban monitoring — detect IPs exceeding threshold, auto-ban via fail2ban and ufw |
+| [🌟 weekly-oss-recommend](./weekly-oss-recommend/) | v1.0.0 | Weekly open source project recommendations — covering Python AI Agent, Go, Vue3 and more |
 
 ---
 
 ## 🤖 hermes-health-check
 
-**Production-grade Hermes Agent health check** covering:
+**Production-grade Hermes Agent health check** — 9-phase diagnostics + weighted scoring:
 
 - **Phase 1:** Hermes Core Diagnostics (doctor / status / config check)
 - **Phase 2:** System Resources (disk, inode, memory, CPU load, process health)
@@ -27,26 +29,24 @@ Production-grade Hermes Agent skills repository — maintained by [P1M0U](https:
 - **Phase 6:** Security Baseline (firewall, SSH config, brute force detection, crontab audit)
 - **Phase 7:** Log Hygiene (log size, rotation, storage usage)
 - **Phase 8:** Environment Info (kernel, cloud platform, DNS, network)
-
-### Features
-
-- ✅ **Weighted Scoring** (0-100) — Gateway 25%, API 20%, Core 20%, etc.
-- ✅ **Dual Watchdog Modes** — LLM cron (full check) + no_agent script (zero token cost)
-- ✅ **Configurable Thresholds** — via `references/config.yaml`
-- ✅ **Production Pitfalls** — covers Alibaba Cloud, containers, macOS, no-sudo scenarios
-- ✅ **Auto-Recovery** — Watchdog restarts Gateway if down
+- **Phase 9:** Profiles Integrity (config validation, session DB integrity, cross-profile isolation, cache bloat)
 
 ### Quick Start
 
 ```bash
-# Interactive check (inside Hermes session)
-# Say "health check" or "run a health check"
+# Interactive check (inside Hermes session — say "health check")
 
-# Scheduled Watchdog (every 6 hours)
+# Scheduled Watchdog (every 6 hours, LLM-driven)
 hermes cron create --name health-watchdog \
   --schedule "0 */6 * * *" \
   --skill hermes-health-check \
   --prompt "Run full health check. Only report if UNHEALTHY."
+
+# Lightweight script (every 30 min, zero token cost)
+hermes cron create --name health-watchdog-quiet \
+  --schedule "*/30 * * * *" \
+  --script health_watchdog.sh \
+  --no-agent
 ```
 
 ---
@@ -75,60 +75,94 @@ hermes cron create --name health-watchdog \
 | 16 | SSH Authorized Keys Audit | 🟠 WARN |
 | 17 | System Updates Status | 🟠 WARN |
 | 18 | Auditd Status | ℹ️ INFO |
-| 19 | **TLS Certificate Expiry** *(new v2.6.0)* | 🟠 WARN |
-| 20 | **Auto-Update Configuration** *(new v2.6.0)* | ℹ️ INFO |
-
-### Features
-
-- ✅ **Weighted Scoring System** (0-100) — All 20 items weighted by severity
-- ✅ **Dual Watchdog Modes** — 30-min emergency monitor (0 token) + full daily check at 10:00/22:00
-- ✅ **CIS Benchmark Aligned** — SSH config and kernel params validated against CIS standards
-- ✅ **Configurable Thresholds** — via `references/config.yaml`
-- ✅ **fail2ban Integration** — auto-detect fail2ban and downgrade risk level
-- ✅ **Smart SSH Detection** — auto-detects `ssh` vs `sshd` service name (Ubuntu/CentOS)
+| 19 | **TLS Certificate Expiry** *(v2.6.0)* | 🟠 WARN |
+| 20 | **Auto-Update Configuration** *(v2.6.0)* | ℹ️ INFO |
 
 ### Quick Start
 
 ```bash
-# Interactive check (inside Hermes session)
-# Say "security check" or "run security scan"
+# Interactive check (inside Hermes session — say "security check")
 
 # Scheduled full check (daily at 10:00/22:00)
 hermes cron create --name "full-security-check" \
   --schedule "0 10,22 * * *" \
   --skill security-health-check \
   --prompt "Run full security health check. Alert if any CRITICAL item or score below 70."
+```
 
-# Emergency monitor (every 30 min, zero tokens)
-# First configure passwordless sudo for journalctl, then:
-hermes cron create --name "emergency-security-monitor" \
-  --schedule "*/30 * * * *" \
-  --script emergency_monitor.sh \
-  --no-agent \
-  --deliver "your-notification-channel"
+---
+
+## 🔒 ssh-bruteforce-guard
+
+**SSH brute-force auto-ban monitoring**:
+
+- Analyze /var/log/auth.log for failed login attempts
+- Count attacks per IP in the last hour
+- Auto-ban IPs exceeding threshold (default 30/hour) via fail2ban and ufw
+- Detailed ban logging
+
+### Quick Start
+
+```bash
+# Manual run
+sudo ~/.hermes/scripts/ssh-guard/monitor.sh
+
+# Scheduled (every hour)
+hermes cron create --name "SSH brute-force monitor" \
+  --schedule "0 * * * *" \
+  --script ssh-guard/monitor.sh \
+  --no-agent
+```
+
+---
+
+## 🌟 weekly-oss-recommend
+
+**Weekly open source project recommendations** — 5 tech directions, 28 search keywords:
+
+- Python AI Agent (9 keywords)
+- Python Others (3 keywords)
+- Go Language (8 keywords)
+- Vue3 Frontend (5 keywords)
+- Mainstream Frameworks (3 keywords)
+
+### Quick Start
+
+```bash
+# Weekly recommendation (Saturday + Sunday 10:00 AM, deliver to Feishu)
+hermes cron create --name "weekly-oss-recommend" \
+  --schedule "0 2 * * 6" \
+  --skill weekly-oss-recommend \
+  --prompt "推荐一个优秀开源项目" \
+  --deliver "feishu:oc_92c9b46accd79149769c935fed40c9a4"
 ```
 
 ---
 
 ## 🚀 Deployment Guide
 
-Copy skills to your target Hermes Agent's skills directory:
+### Option 1: One-click install (recommended)
+
+Tell your Hermes Agent:
+
+> Please install the hermes-health-check skill from the skills-space repo
+
+### Option 2: Manual install
 
 ```bash
-# Clone the repo on your server
-git clone https://github.com/P1M0U/skills-space.git /tmp/skills-space
+# Clone the repo
+git clone https://gitee.com/P1M0U/skills-space.git /tmp/skills-space
 
-# Install hermes-health-check
-cp -r /tmp/skills-space/hermes-health-check ~/.hermes/skills/software-development/
-
-# Install security-health-check
+# Install skills
+cp -r /tmp/skills-space/hermes-health-check ~/.hermes/skills/
 cp -r /tmp/skills-space/security-health-check ~/.hermes/skills/
-```
 
-Or use `hermes skills install` if you have a Skills Hub configured.
+# Cleanup
+rm -rf /tmp/skills-space
+```
 
 ---
 
 ## 📄 License
 
-MIT
+[MIT](./LICENSE) — Copyright (c) 2026 P1M0U
