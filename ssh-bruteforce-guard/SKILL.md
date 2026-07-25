@@ -6,7 +6,7 @@ platforms: [linux]
 metadata:
   hermes:
     tags: [security, ssh, fail2ban, ufw, bruteforce, monitoring]
-    related_skills: [security-health-check]
+    related_skills: [server-security-check]
 ---
 
 # SSH暴力破解自动封禁监控

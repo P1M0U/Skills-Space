@@ -11,7 +11,7 @@ Production-grade Hermes Agent skills repository — maintained by [P1M0U](https:
 | Skill | Version | Description |
 |-------|---------|-------------|
 | [🤖 hermes-health-check](./hermes-health-check/) | v2.2.0 | Production-grade Hermes Agent health check — 9-phase diagnostics, weighted scoring, watchdog cron monitoring |
-| [🛡️ security-health-check](./security-health-check/) | v2.6.0 | Production-grade server security audit — 20 CIS-aligned checks, SSH hardening, malware scan, Docker security, TLS certificate check |
+| [🛡️ server-security-check](./server-security-check/) | v2.6.0 | Production-grade server security audit — 20 CIS-aligned checks, SSH hardening, malware scan, Docker security, TLS certificate check |
 | [🔒 ssh-bruteforce-guard](./ssh-bruteforce-guard/) | v1.0.0 | SSH brute-force auto-ban monitoring — detect IPs exceeding threshold, auto-ban via fail2ban and ufw |
 | [🌟 weekly-oss-recommend](./weekly-oss-recommend/) | v1.0.0 | Weekly open source project recommendations — covering Python AI Agent, Go, Vue3 and more |
 
@@ -51,7 +51,7 @@ hermes cron create --name health-watchdog-quiet \
 
 ---
 
-## 🛡️ security-health-check
+## 🛡️ server-security-check
 
 **Production-grade server security audit** covering **20 inspection domains**:
 
@@ -86,7 +86,7 @@ hermes cron create --name health-watchdog-quiet \
 # Scheduled full check (daily at 10:00/22:00)
 hermes cron create --name "full-security-check" \
   --schedule "0 10,22 * * *" \
-  --skill security-health-check \
+  --skill server-security-check \
   --prompt "Run full security health check. Alert if any CRITICAL item or score below 70."
 ```
 
@@ -155,7 +155,7 @@ git clone https://gitee.com/P1M0U/Skills-Space.git /tmp/Skills-Space
 
 # Install skills
 cp -r /tmp/Skills-Space/hermes-health-check ~/.hermes/skills/
-cp -r /tmp/Skills-Space/security-health-check ~/.hermes/skills/
+cp -r /tmp/Skills-Space/server-security-check ~/.hermes/skills/
 
 # Cleanup
 rm -rf /tmp/Skills-Space

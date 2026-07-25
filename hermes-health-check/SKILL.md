@@ -6,7 +6,7 @@ platforms: [linux]
 metadata:
   hermes:
     tags: [hermes, diagnostics, monitoring, health-check, troubleshooting, production]
-    related_skills: [hermes-agent, security-health-check]
+    related_skills: [hermes-agent, server-security-check]
 ---
 
 # Hermes Health Check (Production Edition)
@@ -178,7 +178,7 @@ If curl-based testing is not possible, fall back to `hermes doctor` connectivity
 
 ### Phase 6: Network & Security Baseline
 
-Quick security posture — cross-reference with `security-health-check` skill for full scan.
+Quick security posture — cross-reference with `server-security-check` skill for full scan.
 
 ```bash
 # Firewall status

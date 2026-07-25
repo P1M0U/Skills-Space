@@ -33,7 +33,7 @@
 
 告诉你的 Hermes Agent：
 
-> 请帮我安装 security-health-check skill，从 https://github.com/P1M0U/Skills-Space 仓库
+> 请帮我安装 server-security-check skill，从 https://github.com/P1M0U/Skills-Space 仓库
 
 Agent 会自动执行：
 
@@ -42,11 +42,11 @@ Agent 会自动执行：
 git clone https://github.com/P1M0U/Skills-Space.git /tmp/Skills-Space
 
 # 复制 skill 目录
-cp -r /tmp/Skills-Space/security-health-check ~/.hermes/skills/
+cp -r /tmp/Skills-Space/server-security-check ~/.hermes/skills/
 
 # 复制监控脚本（如果需要紧急监控）
 mkdir -p ~/.hermes/scripts
-cp /tmp/Skills-Space/security-health-check/scripts/emergency_monitor.sh ~/.hermes/scripts/
+cp /tmp/Skills-Space/server-security-check/scripts/emergency_monitor.sh ~/.hermes/scripts/
 
 # 清理
 rm -rf /tmp/Skills-Space
@@ -59,7 +59,7 @@ rm -rf /tmp/Skills-Space
 git clone https://github.com/P1M0U/Skills-Space.git /tmp/Skills-Space
 
 # 复制 skill 目录
-cp -r /tmp/Skills-Space/security-health-check ~/.hermes/skills/
+cp -r /tmp/Skills-Space/server-security-check ~/.hermes/skills/
 
 # 清理
 rm -rf /tmp/Skills-Space
@@ -87,7 +87,7 @@ rm -rf /tmp/Skills-Space
 # 全量检查（每天 10:00/22:00）
 hermes cron create --name "安全全量检查" \
   --schedule "0 10,22 * * *" \
-  --skill security-health-check \
+  --skill server-security-check \
   --prompt "执行完整安全健康检查。如有 CRITICAL 项或评分低于 70，明确告警。"
 
 # 紧急监控（每 30 分钟，0 token 消耗）

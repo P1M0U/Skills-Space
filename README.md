@@ -11,7 +11,7 @@ Hermes Agent 生产级技能仓库 — 由 [P1M0U](https://gitee.com/P1M0U) 维�
 | 技能 | 版本 | 描述 |
 |------|------|------|
 | [🤖 hermes-health-check](./hermes-health-check/) | v2.2.0 | Hermes Agent 生产级健康检查 — 9 阶段诊断、加权评分、Watchdog 定时监控 |
-| [🛡️ security-health-check](./security-health-check/) | v2.6.0 | 服务器生产级安全审计 — 20 项 CIS 级别检查、SSH 加固、恶意进程扫描、Docker 安全、TLS 证书检查 |
+| [🛡️ server-security-check](./server-security-check/) | v2.6.0 | 服务器生产级安全审计 — 20 项 CIS 级别检查、SSH 加固、恶意进程扫描、Docker 安全、TLS 证书检查 |
 | [🔒 ssh-bruteforce-guard](./ssh-bruteforce-guard/) | v1.0.0 | SSH暴力破解自动封禁监控 — 检测每小时攻击超过阈值的IP，自动通过fail2ban和ufw封禁 |
 | [🌟 weekly-oss-recommend](./weekly-oss-recommend/) | v1.0.0 | 每周优秀开源项目推荐 — 覆盖 Python AI Agent、Go、Vue3 等 5 个方向 28 个搜索关键词 |
 
@@ -51,7 +51,7 @@ hermes cron create --name health-watchdog-quiet \
 
 ---
 
-## 🛡️ security-health-check
+## 🛡️ server-security-check
 
 **生产级服务器安全审计**，覆盖 **20 个安全检查领域**：
 
@@ -71,7 +71,7 @@ hermes cron create --name health-watchdog-quiet \
 # 全量定时检查（每天 10:00/22:00）
 hermes cron create --name "安全全量检查" \
   --schedule "0 10,22 * * *" \
-  --skill security-health-check \
+  --skill server-security-check \
   --prompt "执行完整安全健康检查。如有 CRITICAL 项或评分低于 70，明确告警。"
 ```
 
@@ -141,7 +141,7 @@ git clone https://gitee.com/P1M0U/Skills-Space.git /tmp/Skills-Space
 
 # 安装所需 skill
 cp -r /tmp/Skills-Space/hermes-health-check ~/.hermes/skills/
-cp -r /tmp/Skills-Space/security-health-check ~/.hermes/skills/
+cp -r /tmp/Skills-Space/server-security-check ~/.hermes/skills/
 
 # 清理
 rm -rf /tmp/Skills-Space

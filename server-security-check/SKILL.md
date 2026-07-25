@@ -1,5 +1,5 @@
 ---
-name: security-health-check
+name: server-security-check
 description: "Production-grade server security health check — 20 phases covering firewall, ports, SSH hardening, brute force, malware/rootkit, user audit, SUID, crontab, systemd, Docker, SELinux/AppArmor, kernel hardening, disk/inode, memory, login logs, SSH keys, system updates, auditd, TLS certificates, and unattended-upgrades. Includes scoring system, interactive mode, and no-agent cron watchdog."
 version: 2.6.0
 platforms: [linux]
@@ -622,7 +622,7 @@ total = sum(all phase_contributions), rounded to integer
 ```bash
 hermes cron create --name "安全全量检查" \
   --schedule "0 10,22 * * *" \
-  --skill security-health-check \
+  --skill server-security-check \
   --prompt "执行完整安全健康检查。输出结构化中文报告。如有 CRITICAL 项或评分低于 70，明确告警。"
 ```
 
@@ -666,7 +666,7 @@ hermes cron create --name "紧急安全监控" \
 
 - `hermes skills check` **不会**检查本 skill 的更新（只检查 `official` 和 `builtin` 来源）
 - `hermes skills update` **不会**更新本 skill
-- 如需更新，需手动对比远程仓库（如有）或直接编辑 `~/.hermes/skills/security-health-check/SKILL.md`
+- 如需更新，需手动对比远程仓库（如有）或直接编辑 `~/.hermes/skills/server-security-check/SKILL.md`
 - 版本号在 SKILL.md frontmatter 的 `version` 字段中维护（当前: 2.6.0）
 
 与之对比：`hermes-agent` 是 `builtin` 来源，随 Hermes 核心更新；`pixel-art`、`creative-ideation` 等是 `official` 来源，通过 `hermes skills update` 自动更新。
