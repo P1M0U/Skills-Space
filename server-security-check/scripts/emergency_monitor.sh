@@ -1,255 +1,180 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════
-# 服务器紧急安全监控 v2.3 — no_agent cron 模式
+# Server Security Watchdog — no_agent cron mode
+# Outputs structured JSON for agent analysis.
+# Silent on success (empty stdout), JSON when issues detected.
+# shellcheck disable=SC2312
 # ═══════════════════════════════════════════════════════════
-# 行为：仅 CRITICAL 级别输出告警（空 stdout = 不发送消息）
-# 覆盖范围：SSH 暴力破解、恶意进程、磁盘/Inode>92%、内存<200MB、
-#           恶意 SUID、Docker 暴露、Gateway 健康、OOM Killer
-# 新增：早上8:00-8:30生成整晚汇总报告
-# v2.3 变更：修复 Ubuntu sshd→ssh、IP正则转义、新增 Inode/OOM 检查、
-#            更新恶意进程特征库、自动检测 SSH 服务名
-# ═══════════════════════════════════════════════════════════
-
 set -euo pipefail
 
-ALERTS=""
-HAS_ALERT=0
-NOW=$(date '+%Y-%m-%d %H:%M:%S %Z')
-HOUR=$(date '+%H')
-MINUTE=$(date '+%M')
+NOW=$(date '+%Y-%m-%d %H:%M:%S')
+NOW_EPOCH=$(date +%s)
+TODAY=$(date '+%Y-%m-%d')
+HOSTNAME=$(hostname 2>/dev/null || echo "unknown")
 
-# 检测是否是汇总时间（8:00-8:30）
-IS_NIGHT_SUMMARY=0
-if [ "$HOUR" -eq 8 ] && [ "$MINUTE" -le 30 ]; then
-    IS_NIGHT_SUMMARY=1
-fi
-
-# 阈值（可通过环境变量覆盖）
+# ── Thresholds ──
 CRIT_DISK_PCT="${CRIT_DISK_PCT:-92}"
 CRIT_MEM_MB="${CRIT_MEM_MB:-200}"
 SSH_FAIL_THRESHOLD="${SSH_FAIL_THRESHOLD:-50}"
 
-# 自动检测 SSH systemd 服务名（Ubuntu=ssh, CentOS=sshd）
-detect_ssh_unit() {
-    if systemctl list-units --type=service 2>/dev/null | grep -q " ssh\.service"; then
-        echo "ssh"
-    elif systemctl list-units --type=service 2>/dev/null | grep -q " sshd\.service"; then
-        echo "sshd"
-    else
-        # 默认尝试 ssh（更常见的 Ubuntu 环境）
-        echo "ssh"
-    fi
-}
-SSH_UNIT=$(detect_ssh_unit)
+# ── Detect SSH service name (Ubuntu=ssh, CentOS=sshd) ──
+SSH_UNIT="ssh"
+if systemctl list-units --type=service 2>/dev/null | grep -q " sshd\\.service"; then
+    SSH_UNIT="sshd"
+fi
 
-alert() {
-    local msg="$1"
-    ALERTS="${ALERTS}\\\\n❌ ${msg}"
-    HAS_ALERT=1
-}
+# ── Collect metrics ──
 
-# ═══════ 1. SSH 暴力破解（最近30分钟） ═══════
+# 1. SSH brute force (last 30 min)
+SSH_FAILS=0
+SSH_INVALID=0
+SSH_TOP_IPS=""
+SSH_TOP_USERS=""
+FAIL2BAN_BANNED="0"
+FAIL2BAN_TOTAL="0"
 if command -v journalctl &>/dev/null; then
     SSH_FAILS=$(sudo -n journalctl -u "$SSH_UNIT" --since "30 min ago" 2>/dev/null | grep -c "Failed password" || true)
+    : "${SSH_FAILS:=0}"
     SSH_INVALID=$(sudo -n journalctl -u "$SSH_UNIT" --since "30 min ago" 2>/dev/null | grep -c "Invalid user" || true)
-    TOTAL=$((SSH_FAILS + SSH_INVALID))
-    if [ "$TOTAL" -gt "$SSH_FAIL_THRESHOLD" ]; then
-        alert "SSH 暴力破解！最近30min: 失败登录 ${SSH_FAILS} 次，无效用户 ${SSH_INVALID} 次"
-        # Top 3 IP（单反斜杠，正确的 PCRE 语法）
-        TOP_IPS=$(sudo -n journalctl -u "$SSH_UNIT" --since "30 min ago" 2>/dev/null | grep "Failed password" | grep -oP 'from \K[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | sort | uniq -c | sort -rn | head -3)
-        if [ -n "$TOP_IPS" ]; then
-            ALERTS="${ALERTS}\\\\n攻击来源 TOP3:\\\\n${TOP_IPS}"
-        fi
-
-        # 尝试 fail2ban 封禁
-        if command -v fail2ban-client &>/dev/null; then
-            BAN_STATUS=$(sudo -n fail2ban-client status "$SSH_UNIT" 2>/dev/null | grep -oP "Currently banned:\s+\K[0-9]+" || echo "0")
-            ALERTS="${ALERTS}\\\\n[INFO] fail2ban 已封禁 ${BAN_STATUS} 个 IP"
-        fi
+    : "${SSH_INVALID:=0}"
+    if [ "$((SSH_FAILS + SSH_INVALID))" -gt 0 ]; then
+        SSH_TOP_IPS=$(sudo -n journalctl -u "$SSH_UNIT" --since "30 min ago" 2>/dev/null \
+            | grep "Failed password" | grep -oP 'from \K[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' \
+            | sort | uniq -c | sort -rn | head -5 \
+            | awk '{printf "{\"count\":%s,\"ip\":\"%s\"},", $2, $1}' | sed 's/,$//')
+        SSH_TOP_USERS=$(sudo -n journalctl -u "$SSH_UNIT" --since "30 min ago" 2>/dev/null \
+            | grep "Failed password" | grep -oP '(for|for invalid user) \K\S+' \
+            | sort | uniq -c | sort -rn | head -5 \
+            | awk '{printf "{\"count\":%s,\"user\":\"%s\"},", $2, $1}' | sed 's/,$//')
+    fi
+    if command -v fail2ban-client &>/dev/null; then
+        FAIL2BAN_BANNED=$(sudo -n fail2ban-client status "$SSH_UNIT" 2>/dev/null | grep -oP "Currently banned:\s+\K[0-9]+" || echo "0")
+        FAIL2BAN_TOTAL=$(sudo -n fail2ban-client status "$SSH_UNIT" 2>/dev/null | grep -oP "Total banned:\s+\K[0-9]+" || echo "0")
     fi
 fi
+SSH_TOTAL=$((SSH_FAILS + SSH_INVALID))
 
-# ═══════ 2. 恶意进程 ═══════
-MALWARE=$(ps aux 2>/dev/null | grep -iE "xmrig|cryptonight|minerd|stratum|kinsing|kdevtmpfsi|pwnrig|masscan|sustes|watchbog|gates|lady|ddgs|kthreaddi|ld-linux|XMrig" | grep -v grep || true)
-if [ -n "$MALWARE" ]; then
-    alert "发现可疑恶意进程！\\\\n${MALWARE}"
+# 2. Malware scan
+MALWARE_LIST=""
+MALWARE_PROCS=$(ps aux 2>/dev/null \
+    | grep -iE "xmrig|cryptonight|minerd|stratum|kinsing|kdevtmpfsi|pwnrig|masscan|sustes|watchbog|gates|lady|ddgs|kthreaddi|ld-linux|XMrig" \
+    | grep -v grep || true)
+if [ -n "$MALWARE_PROCS" ]; then
+    MALWARE_LIST=$(echo "$MALWARE_PROCS" | awk '{printf "{\"pid\":%s,\"user\":\"%s\",\"cmd\":\"%s\"},", $2, $1, $11}' | sed 's/,$//')
 fi
 
-# ═══════ 3. 磁盘紧急告警 ═══════
-DISK_USAGE=$(df / 2>/dev/null | tail -1 | awk '{print $5}' | sed 's/%//' || echo 0)
-if [ "$DISK_USAGE" -gt "$CRIT_DISK_PCT" ]; then
-    alert "磁盘空间告急！使用率 ${DISK_USAGE}% (阈值: ${CRIT_DISK_PCT}%)"
-    # 显示大目录
-    TOP_DIRS=$(du -sh /* 2>/dev/null | sort -rh | head -5)
-    ALERTS="${ALERTS}\\\\n最大目录:\\\\n${TOP_DIRS}"
+# 3. Disk
+DISK_USED_PCT=$(df / | tail -1 | awk '{print $5}' | sed 's/%//')
+DISK_AVAIL=$(df -h / | tail -1 | awk '{print $4}')
+DISK_TOP_DIRS=""
+if [ "$DISK_USED_PCT" -gt "$CRIT_DISK_PCT" ]; then
+    DISK_TOP_DIRS=$(du -sh /* 2>/dev/null | sort -rh | head -5 \
+        | awk '{printf "{\"dir\":\"%s\",\"size\":\"%s\"},", $2, $1}' | sed 's/,$//')
 fi
 
-# ═══════ 3b. Inode 紧急告警 ═══════
-INODE_USAGE=$(df -i / 2>/dev/null | tail -1 | awk '{print $5}' | sed 's/%//' || echo 0)
-if [ "$INODE_USAGE" -gt "$CRIT_DISK_PCT" ]; then
-    alert "Inode 使用率告急！${INODE_USAGE}% (阈值: ${CRIT_DISK_PCT}%)"
-fi
+# 4. Inode
+INODE_USED_PCT=$(df -i / | tail -1 | awk '{print $5}' | sed 's/%//')
 
-# ═══════ 4. 内存紧急告警 ═══════
-MEM_AVAIL=$(free -m 2>/dev/null | awk '/Mem:/ {print $7}' || echo 99999)
-if [ "$MEM_AVAIL" -lt "$CRIT_MEM_MB" ]; then
-    MEM_TOTAL=$(free -m | awk '/Mem:/ {print $2}')
-    MEM_USED=$((MEM_TOTAL - MEM_AVAIL))
-    MEM_PCT=$((MEM_USED * 100 / MEM_TOTAL))
-    alert "内存告急！可用 ${MEM_AVAIL}MB / 总计 ${MEM_TOTAL}MB (${MEM_PCT}%)"
-fi
+# 5. Memory
+MEM_TOTAL_MB=$(free -m | awk '/Mem:/ {print $2}')
+MEM_AVAIL_MB=$(free -m | awk '/Mem:/ {print $7}')
+MEM_USED_MB=$((MEM_TOTAL_MB - MEM_AVAIL_MB))
 
-# ═══════ 4b. OOM Killer 活动检测 ═══════
+# 6. OOM Killer
+OOM_EVENTS=0
 if command -v dmesg &>/dev/null; then
     OOM_EVENTS=$(dmesg 2>/dev/null | grep -c "Out of memory" || true)
-    if [ "$OOM_EVENTS" -gt 0 ]; then
-        alert "检测到 OOM Kill 事件！内核 OOM Killer 已触发 ${OOM_EVENTS} 次"
-    fi
+    : "${OOM_EVENTS:=0}"
 elif command -v journalctl &>/dev/null; then
     OOM_EVENTS=$(sudo -n journalctl -k --since "24 hours ago" 2>/dev/null | grep -c "Out of memory" || true)
-    if [ "$OOM_EVENTS" -gt 0 ]; then
-        alert "检测到 OOM Kill 事件！过去24h内核 OOM Killer 已触发 ${OOM_EVENTS} 次"
-    fi
+    : "${OOM_EVENTS:=0}"
 fi
 
-# ═══════ 5. 异常 SUID 文件（提权攻击检测） ═══════
-BAD_SUID=$(find /tmp /dev/shm /var/tmp -perm -4000 -type f 2>/dev/null || true)
-if [ -n "$BAD_SUID" ]; then
-    alert "用户可写目录下发现 SUID 文件（提权攻击！）:\\\\n${BAD_SUID}"
+# 7. Malicious SUID files
+BAD_SUID=""
+SUID_FILES=$(find /tmp /dev/shm /var/tmp -perm -4000 -type f 2>/dev/null || true)
+if [ -n "$SUID_FILES" ]; then
+    BAD_SUID=$(echo "$SUID_FILES" | awk '{printf "\"%s\",", $0}' | sed 's/,$//')
 fi
 
-# ═══════ 6. Docker TCP 暴露检查 ═══════
+# 8. Docker TCP exposure
+DOCKER_EXPOSED="false"
 if command -v docker &>/dev/null; then
-    DOCKER_EXPOSED=$(ss -tlnp 2>/dev/null | grep ":2375" || true)
-    if [ -n "$DOCKER_EXPOSED" ]; then
-        alert "Docker 无保护 TCP 端口 2375 暴露！任何人均可控制 Docker 守护进程"
+    DOCKER_CHECK=$(ss -tlnp 2>/dev/null | grep ":2375" || true)
+    if [ -n "$DOCKER_CHECK" ]; then
+        DOCKER_EXPOSED="true"
     fi
 fi
 
-# ═══════ 7. Hermes Gateway 进程健康 ═══════
-if ! systemctl --user is-active hermes-gateway &>/dev/null 2>&1; then
-    alert "Hermes Gateway 未运行"
+# 9. Gateway status
+GW_STATUS="unknown"
+if systemctl --user is-active hermes-gateway.service &>/dev/null; then
+    GW_STATUS="running"
+else
+    GW_STATUS="stopped"
 fi
 
-# ═══════ 输出（空 = 不发送） ═════
-if [ "$HAS_ALERT" -eq 1 ]; then
-    HOSTNAME=$(hostname 2>/dev/null || echo "unknown")
-    echo "═════════════════════════════════════"
-    echo "  🚨 服务器紧急安全告警"
-    echo "  主机: ${HOSTNAME}"
-    echo "  时间: ${NOW}"
-    echo "═════════════════════════════════════"
-    echo -e "$ALERTS"
-    echo ""
-    echo "⚠️  请尽快登录服务器排查。"
+# 10. Open ports (non-local)
+OPEN_PORTS=""
+OPEN_PORTS_RAW=$(ss -tlnp 2>/dev/null | grep -v "127.0.0.1\|::1" | awk 'NR>1 {print $4}' | sed 's/.*://' | sort -un | head -20)
+if [ -n "$OPEN_PORTS_RAW" ]; then
+    OPEN_PORTS=$(echo "$OPEN_PORTS_RAW" | awk '{printf "%s,", $1}' | sed 's/,$//')
 fi
 
-# ═══════ 汇总报告（8:00-8:30） ═════
-if [ "$IS_NIGHT_SUMMARY" -eq 1 ]; then
-    HOSTNAME=$(hostname 2>/dev/null || echo "unknown")
-    YESTERDAY=$(date -d "yesterday" '+%Y-%m-%d')
-    
-    echo ""
-    echo "═════════════════════════════════════"
-    echo "  🌙 每日安全检查汇总报告"
-    echo "  主机: ${HOSTNAME}"
-    echo "  统计时段: ${YESTERDAY} 18:00 ~ ${NOW}"
-    echo "═════════════════════════════════════"
-    
-    # 1. SSH暴力破解统计（昨晚）
-    if command -v journalctl &>/dev/null; then
-        SSH_FAILS=$(sudo -n journalctl -u "$SSH_UNIT" --since "yesterday 18:00" 2>/dev/null | grep -c "Failed password" || true)
-        SSH_INVALID=$(sudo -n journalctl -u "$SSH_UNIT" --since "yesterday 18:00" 2>/dev/null | grep -c "Invalid user" || true)
-        SSH_TOTAL=$((SSH_FAILS + SSH_INVALID))
-        
-        echo ""
-        echo "📊 SSH暴力破解统计 (服务: ${SSH_UNIT})"
-        echo "  失败登录次数: ${SSH_FAILS}"
-        echo "  无效用户尝试: ${SSH_INVALID}"
-        echo "  总计: ${SSH_TOTAL} 次"
-        
-        # Top 5 攻击IP
-        if [ "$SSH_TOTAL" -gt 0 ]; then
-            echo ""
-            echo "🎯 攻击来源 TOP5:"
-            sudo -n journalctl -u "$SSH_UNIT" --since "yesterday 18:00" 2>/dev/null | grep "Failed password" | grep -oP 'from \K[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | sort | uniq -c | sort -rn | head -5 | while read count ip; do
-                echo "  ${ip} - ${count} 次"
-            done
-            
-            # 被尝试的用户名
-            echo ""
-            echo "🔑 被尝试的用户名:"
-            sudo -n journalctl -u "$SSH_UNIT" --since "yesterday 18:00" 2>/dev/null | grep "Failed password" | grep -oP '(for|for invalid user) \K\S+' | sort | uniq -c | sort -rn | head -5 | while read count user; do
-                echo "  ${user} - ${count} 次"
-            done
-        fi
-        
-        # fail2ban状态
-        if command -v fail2ban-client &>/dev/null; then
-            BAN_STATUS=$(sudo -n fail2ban-client status "$SSH_UNIT" 2>/dev/null | grep -oP "Currently banned:\s+\K[0-9]+" || echo "0")
-            TOTAL_BAN=$(sudo -n fail2ban-client status "$SSH_UNIT" 2>/dev/null | grep -oP "Total banned:\s+\K[0-9]+" || echo "0")
-            echo ""
-            echo "🛡️ fail2ban状态"
-            echo "  当前封禁IP数: ${BAN_STATUS}"
-            echo "  累计封禁IP数: ${TOTAL_BAN}"
-        fi
-    fi
-    
-    # 2. 系统资源状态
-    echo ""
-    echo "💻 系统资源状态"
-    DISK_USAGE=$(df / 2>/dev/null | tail -1 | awk '{print $5}' | sed 's/%//' || echo 0)
-    DISK_FREE=$(df -h / 2>/dev/null | tail -1 | awk '{print $4}' || echo "unknown")
-    echo "  磁盘使用率: ${DISK_USAGE}% (剩余: ${DISK_FREE})"
-    
-    INODE_USAGE=$(df -i / 2>/dev/null | tail -1 | awk '{print $5}' | sed 's/%//' || echo 0)
-    echo "  Inode使用率: ${INODE_USAGE}%"
-    
-    MEM_AVAIL=$(free -m 2>/dev/null | awk '/Mem:/ {print $7}' || echo 0)
-    MEM_TOTAL=$(free -m 2>/dev/null | awk '/Mem:/ {print $2}' || echo 0)
-    echo "  可用内存: ${MEM_AVAIL}MB / ${MEM_TOTAL}MB"
-    
-    # 3. 安全事件汇总
-    echo ""
-    echo "🔒 安全事件汇总"
-    
-    # 检查是否有恶意进程
-    MALWARE=$(ps aux 2>/dev/null | grep -iE "xmrig|cryptonight|minerd|stratum|kinsing|kdevtmpfsi|pwnrig|masscan|sustes|watchbog|gates|lady|ddgs|kthreaddi|ld-linux|XMrig" | grep -v grep || true)
-    if [ -n "$MALWARE" ]; then
-        echo "  ❌ 发现恶意进程"
-    else
-        echo "  ✅ 未发现恶意进程"
-    fi
-    
-    # 检查Docker暴露
-    if command -v docker &>/dev/null; then
-        DOCKER_EXPOSED=$(ss -tlnp 2>/dev/null | grep ":2375" || true)
-        if [ -n "$DOCKER_EXPOSED" ]; then
-            echo "  ❌ Docker TCP 2375 暴露"
-        else
-            echo "  ✅ Docker 安全"
-        fi
-    fi
-    
-    # 检查OOM事件
-    if command -v dmesg &>/dev/null; then
-        OOM_EVENTS=$(dmesg 2>/dev/null | grep -c "Out of memory" || true)
-        if [ "$OOM_EVENTS" -gt 0 ]; then
-            echo "  ❌ OOM Kill 事件: ${OOM_EVENTS} 次"
-        else
-            echo "  ✅ 无 OOM Kill 事件"
-        fi
-    fi
-    
-    # 检查Gateway状态
-    if systemctl --user is-active hermes-gateway &>/dev/null 2>&1; then
-        echo "  ✅ Hermes Gateway 运行正常"
-    else
-        echo "  ❌ Hermes Gateway 未运行"
-    fi
-    
-    echo ""
-    echo "═════════════════════════════════════"
-    echo "  📋 汇总完成"
-    echo "═════════════════════════════════════"
+# 11. Failed SSH today (for summary)
+SSH_FAILS_TODAY=0
+if command -v journalctl &>/dev/null; then
+    SSH_FAILS_TODAY=$(sudo -n journalctl -u "$SSH_UNIT" --since "today 00:00" 2>/dev/null | grep -c "Failed password" || true)
+    : "${SSH_FAILS_TODAY:=0}"
 fi
+
+# ── Build JSON ──
+cat <<EOF
+{
+  "timestamp": "${NOW}",
+  "epoch": ${NOW_EPOCH},
+  "hostname": "${HOSTNAME}",
+  "ssh": {
+    "service": "${SSH_UNIT}",
+    "fails_30min": ${SSH_FAILS},
+    "invalid_30min": ${SSH_INVALID},
+    "total_30min": ${SSH_TOTAL},
+    "fails_today": ${SSH_FAILS_TODAY},
+    "top_ips": [${SSH_TOP_IPS}],
+    "top_users": [${SSH_TOP_USERS}],
+    "fail2ban_banned": ${FAIL2BAN_BANNED},
+    "fail2ban_total": ${FAIL2BAN_TOTAL}
+  },
+  "malware": {
+    "detected": $([ -n "$MALWARE_LIST" ] && echo "true" || echo "false"),
+    "processes": [${MALWARE_LIST}]
+  },
+  "disk": {
+    "used_pct": ${DISK_USED_PCT},
+    "avail": "${DISK_AVAIL}",
+    "inode_used_pct": ${INODE_USED_PCT},
+    "top_dirs": [${DISK_TOP_DIRS}]
+  },
+  "memory": {
+    "total_mb": ${MEM_TOTAL_MB},
+    "used_mb": ${MEM_USED_MB},
+    "avail_mb": ${MEM_AVAIL_MB}
+  },
+  "oom": {
+    "events": ${OOM_EVENTS}
+  },
+  "suid": {
+    "malicious": $([ -n "$BAD_SUID" ] && echo "true" || echo "false"),
+    "files": [${BAD_SUID}]
+  },
+  "docker": {
+    "tcp_2375_exposed": ${DOCKER_EXPOSED}
+  },
+  "gateway": {
+    "status": "${GW_STATUS}"
+  },
+  "network": {
+    "open_ports": "${OPEN_PORTS}"
+  }
+}
+EOF
