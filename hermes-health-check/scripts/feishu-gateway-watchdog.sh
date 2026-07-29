@@ -1,7 +1,8 @@
 #!/bin/bash
 # Feishu Gateway Watchdog — no_agent cron mode
-# Outputs structured JSON for agent analysis.
-# For no_agent cron: non-empty stdout → delivered; empty stdout → silent.
+# Hermes Agent 专属健康检查：Gateway 状态 + 日志 + 进程内存。
+# 系统级指标（磁盘/内存/CPU/安全）由 server-security-check 覆盖。
+# Silent on success (exit 0 + no stdout).
 # shellcheck disable=SC2312
 set -euo pipefail
 
@@ -10,57 +11,37 @@ NOW=$(date '+%Y-%m-%d %H:%M:%S')
 NOW_EPOCH=$(date +%s)
 TODAY=$(date '+%Y-%m-%d')
 
-# ── Thresholds (override via env) ──
-WARN_DISK_PCT="${WARN_DISK_PCT:-85}"
-CRIT_DISK_PCT="${CRIT_DISK_PCT:-92}"
-WARN_MEM_MB="${WARN_MEM_MB:-500}"
-CRIT_MEM_MB="${CRIT_MEM_MB:-200}"
-WARN_ERRORS="${WARN_ERRORS:-5}"
-CRIT_ERRORS="${CRIT_ERRORS:-20}"
+# ── Thresholds ──
+WARN_LOG_ERRORS="${WARN_LOG_ERRORS:-5}"
+CRIT_LOG_ERRORS="${CRIT_LOG_ERRORS:-20}"
+WARN_GW_RSS_KB="${WARN_GW_RSS_KB:-1048576}"   # 1GB
+CRIT_GW_RSS_KB="${CRIT_GW_RSS_KB:-2097152}"   # 2GB
+WARN_LOG_SIZE="${WARN_LOG_SIZE:-209715200}"     # 200MB
+CRIT_LOG_SIZE="${CRIT_LOG_SIZE:-524288000}"     # 500MB
 
-# ── Collect metrics ──
+# ── Collect Hermes-specific metrics ──
 
 # 1. Gateway status
-GATEWAY_STATUS="unknown"
-GATEWAY_PID=""
-GATEWAY_RSS_KB=""
-GATEWAY_UPTIME=""
+GW_STATUS="unknown"
+GW_PID=""
+GW_RSS_KB=""
+GW_UPTIME=""
 if systemctl --user is-active hermes-gateway.service &>/dev/null; then
-    GATEWAY_STATUS="running"
-    GATEWAY_PID=$(systemctl --user show -P MainPID hermes-gateway.service 2>/dev/null || echo "")
-    if [ -n "$GATEWAY_PID" ] && [ "$GATEWAY_PID" != "0" ] && [ -d "/proc/$GATEWAY_PID" ]; then
-        GATEWAY_RSS_KB=$(awk '/VmRSS/{print $2}' /proc/"$GATEWAY_PID"/status 2>/dev/null || echo "")
-        GATEWAY_UPTIME=$(ps -p "$GATEWAY_PID" -o etime= 2>/dev/null | xargs || echo "")
+    GW_STATUS="running"
+    GW_PID=$(systemctl --user show -P MainPID hermes-gateway.service 2>/dev/null || echo "")
+    if [ -n "$GW_PID" ] && [ "$GW_PID" != "0" ] && [ -d "/proc/$GW_PID" ]; then
+        GW_RSS_KB=$(awk '/VmRSS/{print $2}' /proc/"$GW_PID"/status 2>/dev/null || echo "")
+        GW_UPTIME=$(ps -p "$GW_PID" -o etime= 2>/dev/null | xargs || echo "")
     fi
 else
-    GATEWAY_STATUS="stopped"
+    GW_STATUS="stopped"
 fi
 
-# 2. Disk usage
-DISK_USED_PCT=$(df / | tail -1 | awk '{print $5}' | sed 's/%//')
-DISK_AVAIL=$(df -h / | tail -1 | awk '{print $4}')
-DISK_TOTAL=$(df -h / | tail -1 | awk '{print $2}')
-
-# 3. Inode usage
-INODE_USED_PCT=$(df -i / | tail -1 | awk '{print $5}' | sed 's/%//')
-
-# 4. Memory
-MEM_TOTAL_MB=$(free -m | awk '/Mem:/ {print $2}')
-MEM_AVAIL_MB=$(free -m | awk '/Mem:/ {print $7}')
-MEM_USED_MB=$((MEM_TOTAL_MB - MEM_AVAIL_MB))
-SWAP_TOTAL_MB=$(free -m | awk '/Swap:/ {print $2}')
-SWAP_USED_MB=$(free -m | awk '/Swap:/ {print $3}')
-
-# 5. CPU load
-LOAD_1=$(awk '{print $1}' /proc/loadavg)
-LOAD_5=$(awk '{print $2}' /proc/loadavg)
-LOAD_15=$(awk '{print $3}' /proc/loadavg)
-NPROC=$(nproc 2>/dev/null || echo "1")
-
-# 6. Gateway log errors (today)
+# 2. Gateway log errors (today)
 ERRORS_TODAY=0
 WARNINGS_TODAY=0
-LOG_SIZE=""
+LOG_SIZE=0
+LOG_RECONNECTS=0
 if [ -f "${HERMES_HOME}/logs/gateway.log" ]; then
     LOG_SIZE=$(stat --format="%s" "${HERMES_HOME}/logs/gateway.log" 2>/dev/null || echo "0")
     ERRORS_TODAY=$(grep "^${TODAY}" "${HERMES_HOME}/logs/gateway.log" 2>/dev/null \
@@ -69,55 +50,64 @@ if [ -f "${HERMES_HOME}/logs/gateway.log" ]; then
     WARNINGS_TODAY=$(grep "^${TODAY}" "${HERMES_HOME}/logs/gateway.log" 2>/dev/null \
         | grep -ci "warning\|warn" 2>/dev/null || true)
     : "${WARNINGS_TODAY:=0}"
+    LOG_RECONNECTS=$(grep "^${TODAY}" "${HERMES_HOME}/logs/gateway.log" 2>/dev/null \
+        | grep -ci "reconnect\|WebSocket closed\|disconnect" 2>/dev/null || true)
+    : "${LOG_RECONNECTS:=0}"
 fi
 
-# 7. Top memory consumers (top 3)
-TOP_MEM=$(ps aux --sort=-%mem 2>/dev/null | awk 'NR>1 && NR<=4 {printf "%s(%s%%) ", $11, $4}' || echo "")
+# 3. Per-platform adapter status (from gateway state JSON)
+ADAPTERS=""
+if [ -f "${HERMES_HOME}/gateway_state.json" ]; then
+    ADAPTERS=$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('${HERMES_HOME}/gateway_state.json'))
+    platforms = d.get('platforms', {})
+    for name, info in platforms.items():
+        state = info.get('state', 'unknown')
+        print(f'{{\"name\":\"{name}\",\"state\":\"{state}\"}}', end=',')
+except: pass
+" 2>/dev/null || echo "")
+    ADAPTERS="[${ADAPTERS%,}]"
+fi
 
-# 8. Uptime
-UPTIME_STR=$(uptime -p 2>/dev/null || uptime | sed 's/.*up /up /' | sed 's/,.*load.*//')
+# 4. Session DB size
+SESSION_DB_SIZE=0
+if [ -f "${HERMES_HOME}/state.db" ]; then
+    SESSION_DB_SIZE=$(stat --format="%s" "${HERMES_HOME}/state.db" 2>/dev/null || echo "0")
+fi
 
-# ── Build JSON output ──
-# Always output JSON (agent analyzes severity; script only collects)
+# 5. Skills & plugins count
+SKILL_COUNT=0
+PLUGIN_COUNT=0
+if [ -d "${HERMES_HOME}/skills" ]; then
+    SKILL_COUNT=$(find "${HERMES_HOME}/skills" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l)
+fi
+if [ -d "${HERMES_HOME}/plugins" ]; then
+    PLUGIN_COUNT=$(find "${HERMES_HOME}/plugins" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l)
+fi
 
+# ── Build JSON ──
 cat <<EOF
 {
   "timestamp": "${NOW}",
   "epoch": ${NOW_EPOCH},
   "hermes_home": "${HERMES_HOME}",
   "gateway": {
-    "status": "${GATEWAY_STATUS}",
-    "pid": "${GATEWAY_PID}",
-    "rss_kb": "${GATEWAY_RSS_KB}",
-    "uptime": "${GATEWAY_UPTIME}"
-  },
-  "disk": {
-    "used_pct": ${DISK_USED_PCT},
-    "avail": "${DISK_AVAIL}",
-    "total": "${DISK_TOTAL}",
-    "inode_used_pct": ${INODE_USED_PCT}
-  },
-  "memory": {
-    "total_mb": ${MEM_TOTAL_MB},
-    "used_mb": ${MEM_USED_MB},
-    "avail_mb": ${MEM_AVAIL_MB},
-    "swap_total_mb": ${SWAP_TOTAL_MB},
-    "swap_used_mb": ${SWAP_USED_MB}
-  },
-  "cpu": {
-    "load_1m": ${LOAD_1},
-    "load_5m": ${LOAD_5},
-    "load_15m": ${LOAD_15},
-    "cores": ${NPROC}
+    "status": "${GW_STATUS}",
+    "pid": "${GW_PID}",
+    "rss_kb": "${GW_RSS_KB}",
+    "uptime": "${GW_UPTIME}"
   },
   "gateway_log": {
     "errors_today": ${ERRORS_TODAY},
     "warnings_today": ${WARNINGS_TODAY},
-    "log_size_bytes": ${LOG_SIZE:-0}
+    "reconnects_today": ${LOG_RECONNECTS},
+    "log_size_bytes": ${LOG_SIZE}
   },
-  "system": {
-    "uptime": "${UPTIME_STR}",
-    "top_mem": "${TOP_MEM}"
-  }
+  "adapters": ${ADAPTERS},
+  "session_db_size_bytes": ${SESSION_DB_SIZE},
+  "skills_count": ${SKILL_COUNT},
+  "plugins_count": ${PLUGIN_COUNT}
 }
 EOF
