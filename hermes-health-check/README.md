@@ -110,7 +110,7 @@ hermes cron create --name gateway-health \
 
 ```
 hermes-health-check/
-├── SKILL.md                              # 主技能文件（v2.2.0）
+├── SKILL.md                              # 主技能文件（v2.2.1）
 ├── README.md                             # 本文件
 ├── references/
 │   ├── config.yaml                       # 阈值配置（可自定义）

@@ -1,7 +1,7 @@
 ---
 name: hermes-health-check
 description: "Production-grade comprehensive health check for Hermes Agent — config, deps, API connectivity, system resources, gateway, network, security baseline, cron jobs, log hygiene, platform adapters, and profiles isolation."
-version: 2.2.0
+version: 2.2.1
 platforms: [linux]
 metadata:
   hermes:
@@ -323,7 +323,7 @@ done
 # Default profile large directories
 du -sh ~/.hermes/state-snapshots/ ~/.hermes/lsp/ ~/.hermes/node/ ~/.hermes/hermes-agent/ 2>/dev/null
 
-# --- Extended checks (v2.2.0 additions) ---
+# --- Extended checks (v2.2.1 additions) ---
 
 # Per-profile config.yaml validity
 for d in ~/.hermes ~/.hermes/profiles/*/; do

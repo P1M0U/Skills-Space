@@ -10,8 +10,8 @@ Hermes Agent 生产级技能仓库 — 由 [P1M0U](https://gitee.com/P1M0U) 维�
 
 | 技能 | 版本 | 描述 |
 |------|------|------|
-| [🤖 hermes-health-check](./hermes-health-check/) | v2.2.0 | Hermes Agent 生产级健康检查 — 9 阶段诊断、加权评分、Watchdog 定时监控 |
-| [🛡️ server-security-check](./server-security-check/) | v2.6.0 | 服务器生产级安全审计 — 20 项 CIS 级别检查、SSH 加固、恶意进程扫描、Docker 安全、TLS 证书检查 |
+| [🤖 hermes-health-check](./hermes-health-check/) | v2.2.1 | Hermes Agent 生产级健康检查 — 9 阶段诊断、加权评分、Watchdog 定时监控 |
+| [🛡️ server-security-check](./server-security-check/) | v2.6.1 | 服务器生产级安全审计 — 20 项 CIS 级别检查、SSH 加固、恶意进程扫描、Docker 安全、TLS 证书检查 |
 | [🔒 ssh-bruteforce-guard](./ssh-bruteforce-guard/) | v1.0.0 | SSH暴力破解自动封禁监控 — 检测每小时攻击超过阈值的IP，自动通过fail2ban和ufw封禁 |
 | [🌟 weekly-oss-recommend](./weekly-oss-recommend/) | v1.0.0 | 每周优秀开源项目推荐 — 覆盖 Python AI Agent、Go、Vue3 等 5 个方向 28 个搜索关键词 |
 
@@ -62,7 +62,7 @@ hermes cron create --name health-watchdog-quiet \
 - Crontab 安全检查、Docker 安全检查
 - SELinux / AppArmor、内核参数加固
 - 磁盘 & Inode、内存 & Swap、系统更新状态
-- **[v2.6.0]** TLS 证书过期检查、自动更新配置检查
+- **[v2.6.1]** TLS 证书过期检查、自动更新配置检查
 
 ### 快速开始
 

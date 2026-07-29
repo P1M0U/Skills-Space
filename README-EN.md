@@ -10,8 +10,8 @@ Production-grade Hermes Agent skills repository — maintained by [P1M0U](https:
 
 | Skill | Version | Description |
 |-------|---------|-------------|
-| [🤖 hermes-health-check](./hermes-health-check/) | v2.2.0 | Production-grade Hermes Agent health check — 9-phase diagnostics, weighted scoring, watchdog cron monitoring |
-| [🛡️ server-security-check](./server-security-check/) | v2.6.0 | Production-grade server security audit — 20 CIS-aligned checks, SSH hardening, malware scan, Docker security, TLS certificate check |
+| [🤖 hermes-health-check](./hermes-health-check/) | v2.2.1 | Production-grade Hermes Agent health check — 9-phase diagnostics, weighted scoring, watchdog cron monitoring |
+| [🛡️ server-security-check](./server-security-check/) | v2.6.1 | Production-grade server security audit — 20 CIS-aligned checks, SSH hardening, malware scan, Docker security, TLS certificate check |
 | [🔒 ssh-bruteforce-guard](./ssh-bruteforce-guard/) | v1.0.0 | SSH brute-force auto-ban monitoring — detect IPs exceeding threshold, auto-ban via fail2ban and ufw |
 | [🌟 weekly-oss-recommend](./weekly-oss-recommend/) | v1.0.0 | Weekly open source project recommendations — covering Python AI Agent, Go, Vue3 and more |
 
@@ -75,8 +75,8 @@ hermes cron create --name health-watchdog-quiet \
 | 16 | SSH Authorized Keys Audit | 🟠 WARN |
 | 17 | System Updates Status | 🟠 WARN |
 | 18 | Auditd Status | ℹ️ INFO |
-| 19 | **TLS Certificate Expiry** *(v2.6.0)* | 🟠 WARN |
-| 20 | **Auto-Update Configuration** *(v2.6.0)* | ℹ️ INFO |
+| 19 | **TLS Certificate Expiry** *(v2.6.1)* | 🟠 WARN |
+| 20 | **Auto-Update Configuration** *(v2.6.1)* | ℹ️ INFO |
 
 ### Quick Start
 

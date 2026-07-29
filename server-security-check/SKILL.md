@@ -1,7 +1,7 @@
 ---
 name: server-security-check
 description: "Production-grade server security health check — 20 phases covering firewall, ports, SSH hardening, brute force, malware/rootkit, user audit, SUID, crontab, systemd, Docker, SELinux/AppArmor, kernel hardening, disk/inode, memory, login logs, SSH keys, system updates, auditd, TLS certificates, and unattended-upgrades. Includes scoring system, interactive mode, and no-agent cron watchdog."
-version: 2.6.0
+version: 2.6.1
 platforms: [linux]
 metadata:
   hermes:
@@ -575,7 +575,7 @@ total = sum(all phase_contributions), rounded to integer
 
 ```
 ╔═══════════════════════════════════════════════════╗
-║        🛡️ 服务器安全健康报告 v2.6.0                ║
+║        🛡️ 服务器安全健康报告 v2.6.1                ║
 ╚═══════════════════════════════════════════════════╝
 
 📊 安全评分: 88/100 — ⚠️ NEEDS ATTENTION
