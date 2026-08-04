@@ -1,12 +1,12 @@
 ---
 name: hermes-health-check
 description: "Production-grade comprehensive health check for Hermes Agent — config, deps, API connectivity, system resources, gateway, network, security baseline, cron jobs, log hygiene, platform adapters, and profiles isolation."
-version: 2.2.1
+version: 2.2.0
 platforms: [linux]
 metadata:
   hermes:
     tags: [hermes, diagnostics, monitoring, health-check, troubleshooting, production]
-    related_skills: [hermes-agent, server-security-check]
+    related_skills: [hermes-agent, security-health-check]
 ---
 
 # Hermes Health Check (Production Edition)
@@ -178,7 +178,7 @@ If curl-based testing is not possible, fall back to `hermes doctor` connectivity
 
 ### Phase 6: Network & Security Baseline
 
-Quick security posture — cross-reference with `server-security-check` skill for full scan.
+Quick security posture — cross-reference with `security-health-check` skill for full scan.
 
 ```bash
 # Firewall status
@@ -323,7 +323,7 @@ done
 # Default profile large directories
 du -sh ~/.hermes/state-snapshots/ ~/.hermes/lsp/ ~/.hermes/node/ ~/.hermes/hermes-agent/ 2>/dev/null
 
-# --- Extended checks (v2.2.1 additions) ---
+# --- Extended checks (v2.2.0 additions) ---
 
 # Per-profile config.yaml validity
 for d in ~/.hermes ~/.hermes/profiles/*/; do
@@ -496,13 +496,15 @@ hermes cron create --name health-watchdog \
 
 ⚠️ **CRITICAL**: The `hermes-health-check` SKILL.md is ~450 lines (~25K tokens when loaded). In LLM-driven cron mode, the full skill content is injected into the system prompt, which can cause the API streaming to stall. If you see `[Errno 32] Broken pipe` with `stale_stream_kill` after 180s, the cron job is choking on the oversized context. **For daily scheduled health checks, prefer Option B (no_agent script) — zero tokens, no API dependency, no timeout risk.** If you must use Option A, pare the prompt down to a few lines of self-contained instructions and do NOT pass `--skill hermes-health-check`.
 
+⚠️ **Non-streaming timeout**: Even a self-contained prompt (no skill loaded) can fail if `streaming.enabled: false` and the provider is busy. If you see `waiting for non-streaming API response`, increase `HERMES_CRON_TIMEOUT` in `~/.hermes/.env` (e.g. 1200) and restart gateway, or enable streaming in config.yaml.
+
 ### Option B: no_agent script (lightweight, zero tokens)
 
 Uses a standalone shell script. Two scripts are bundled with this skill:
 
-**`scripts/health_watchdog.sh`** — basic system-level watchdog (disk, memory, malware).
+**`scripts/health_watchdog.sh`** — basic Hermes-only watchdog (gateway status, log errors, session DB).
 
-**`scripts/feishu-gateway-watchdog.sh`** — enhanced for Feishu (or any) gateway deployments. Adds gateway service status check and gateway log error counting alongside disk/memory checks.
+**`scripts/feishu-gateway-watchdog.sh`** — enhanced for Hermes gateway deployments. Outputs structured JSON with gateway status/memory/uptime, log errors/warnings/reconnects, adapter states, session DB size, skills/plugins count.
 
 ```bash
 # Basic watchdog (any platform)
@@ -558,6 +560,13 @@ See `references/gateway-longevity-assessment.md` for the methodology for checkin
 ### Cron & Large Skills
 - **Don't load this skill into LLM-driven cron jobs.** The SKILL.md is ~25K tokens. When loaded via `--skill hermes-health-check`, the cron's system prompt balloons, and the API streaming stalls after 180s → `stale_stream_kill` → `[Errno 32] Broken pipe`. Always prefer **Option B (no_agent script)** for scheduled health checks.
 - If you see `Stream stale for 180s` followed by `[Errno 32] Broken pipe` in a cron job, the fix is NOT to increase timeouts — it's to switch to no_agent mode or write a self-contained prompt that doesn't load any skill.
+- **Non-streaming API stalls kill LLM-driven cron jobs even without any skill loaded.** Symptom: output/logs contain `TimeoutError: ... idle for Ns (limit 600s) — last activity: waiting for non-streaming API response`, and agent.log shows `api_calls=1/150`, `tool_turns=0` (first LLM call hangs). Root cause: `config.yaml` has `streaming.enabled: false`, making all API calls non-streaming; when the provider is busy (e.g. DeepSeek returns `503 Service is too busy`), non-streaming large requests queue on the server side, exceeding cron's default 600s inactivity limit. Fix order (light to heavy):
+  1. Slim down cron prompt (wrap every command in `timeout`, forbid sudo, minimal output, `[SILENT]` when no alerts)
+  2. Limit toolset `enabled_toolsets=["terminal"]` to reduce request payload
+  3. Schedule避开高峰时段
+  4. Increase `HERMES_CRON_TIMEOUT` (write to `~/.hermes/.env`, e.g. 1200; `0`=infinite; requires gateway restart)
+  5. Root fix: set `streaming.enabled: true` in config.yaml (streaming keeps tokens flowing, no idle timeout)
+  Diagnosis: `grep -E "idle for|non-streaming|interrupted_during_api_call" ~/.hermes/logs/agent.log | tail -20`
 
 ### Platform Differences
 - macOS: No `free -h`, use `vm_stat`. No `ss`, use `lsof -i`.
@@ -569,6 +578,7 @@ See `references/gateway-longevity-assessment.md` for the methodology for checkin
 - No swap on cloud VMs is normal.
 - `.env` file special chars in API keys — use `source ~/.hermes/.env` style.
 - `ps` output on Alpine has different flags. Use `ps -o pid,pcpu,pmem,rss,etime`.
+- `sqlite3` may not be installed — DB integrity checks will fail with "command not found". In cron jobs, skip or use `sqlite3 ... 2>/dev/null || echo "sqlite3 not installed"` to avoid wasting turns.
 
 ### Security
 - Do NOT echo full API keys. Always truncate: `sk-8...1873`.
