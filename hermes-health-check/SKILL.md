@@ -1,7 +1,7 @@
 ---
 name: hermes-health-check
 description: "Production-grade comprehensive health check for Hermes Agent — config, deps, API connectivity, system resources, gateway, network, security baseline, cron jobs, log hygiene, platform adapters, and profiles isolation."
-version: 2.2.0
+version: 2.2.2
 platforms: [linux]
 metadata:
   hermes:
@@ -125,8 +125,12 @@ wc -c ~/.hermes/memories/MEMORY.md ~/.hermes/memories/USER.md 2>&1
 # Session DB
 hermes sessions stats 2>&1
 
-# Check session DB integrity
-sqlite3 ~/.hermes/state.db "PRAGMA integrity_check;" 2>&1
+# Check session DB integrity (skip if sqlite3 not installed)
+if command -v sqlite3 >/dev/null 2>&1; then
+    sqlite3 ~/.hermes/state.db "PRAGMA integrity_check;" 2>&1
+else
+    echo "SKIPPED: sqlite3 not installed"
+fi
 
 # Cron jobs
 hermes cron list 2>&1 || ls ~/.hermes/cron/ 2>&1
@@ -345,16 +349,20 @@ for d in ~/.hermes/profiles/*/; do
     [ -f "$d/.env" ] && echo "$name .env: OK" || echo "$name .env: MISSING"
 done
 
-# Per-profile session DB integrity
-for db in ~/.hermes/state.db ~/.hermes/profiles/*/state.db; do
-    [ -f "$db" ] || continue
-    profile=$(echo "$db" | sed 's|.*/profiles/\([^/]*\)/.*|\1|; s|.*/\.hermes/state\.db|default|')
-    size=$(stat --format="%s" "$db" 2>/dev/null)
-    echo "$profile session.db: ${size:-?} bytes"
-    [ "${size:-0}" -gt 104857600 ] && echo "  ⚠ > 100MB"
-    result=$(sqlite3 "$db" "PRAGMA integrity_check;" 2>/dev/null)
-    [ "$result" != "ok" ] && echo "  ⚠ Integrity: $result"
-done
+# Per-profile session DB integrity (skip if sqlite3 not installed)
+if command -v sqlite3 >/dev/null 2>&1; then
+    for db in ~/.hermes/state.db ~/.hermes/profiles/*/state.db; do
+        [ -f "$db" ] || continue
+        profile=$(echo "$db" | sed 's|.*/profiles/\([^/]*\)/.*|\1|; s|.*/\.hermes/state\.db|default|')
+        size=$(stat --format="%s" "$db" 2>/dev/null)
+        echo "$profile session.db: ${size:-?} bytes"
+        [ "${size:-0}" -gt 104857600 ] && echo "  ⚠ > 100MB"
+        result=$(sqlite3 "$db" "PRAGMA integrity_check;" 2>/dev/null)
+        [ "$result" != "ok" ] && echo "  ⚠ Integrity: $result"
+    done
+else
+    echo "SKIPPED: sqlite3 not installed — DB integrity check omitted"
+fi
 
 # Cross-profile isolation: external symlinks
 find ~/.hermes/profiles/ -maxdepth 3 -type l 2>/dev/null | while read link; do
@@ -496,7 +504,7 @@ hermes cron create --name health-watchdog \
 
 ⚠️ **CRITICAL**: The `hermes-health-check` SKILL.md is ~450 lines (~25K tokens when loaded). In LLM-driven cron mode, the full skill content is injected into the system prompt, which can cause the API streaming to stall. If you see `[Errno 32] Broken pipe` with `stale_stream_kill` after 180s, the cron job is choking on the oversized context. **For daily scheduled health checks, prefer Option B (no_agent script) — zero tokens, no API dependency, no timeout risk.** If you must use Option A, pare the prompt down to a few lines of self-contained instructions and do NOT pass `--skill hermes-health-check`.
 
-⚠️ **Non-streaming timeout**: Even a self-contained prompt (no skill loaded) can fail if `streaming.enabled: false` and the provider is busy. If you see `waiting for non-streaming API response`, increase `HERMES_CRON_TIMEOUT` in `~/.hermes/.env` (e.g. 1200) and restart gateway, or enable streaming in config.yaml.
+⚠️ **Non-streaming timeout**: Slimming the prompt or limiting the toolset is NOT enough — if `streaming.enabled: false` and the provider is busy, even a self-contained prompt (no skill loaded) can hang on the first LLM call until the cron 600s idle limit kills it. Symptoms: `waiting for non-streaming API response` in output, `api_calls=1/150` and `tool_turns=0` in agent.log. Fix: apply the full fix order in **Cron & Large Skills** below (steps 1-5), or at minimum increase `HERMES_CRON_TIMEOUT` in `~/.hermes/.env` (e.g. 1200; `0`=infinite; requires gateway restart). The root fix is `streaming.enabled: true` in config.yaml — streaming keeps tokens flowing so idle timeout never triggers. **When creating an LLM-driven health cron job, always remind the user to verify `HERMES_CRON_TIMEOUT` is set and streaming is enabled, or switch to Option B.**
 
 ### Option B: no_agent script (lightweight, zero tokens)
 
@@ -578,7 +586,7 @@ See `references/gateway-longevity-assessment.md` for the methodology for checkin
 - No swap on cloud VMs is normal.
 - `.env` file special chars in API keys — use `source ~/.hermes/.env` style.
 - `ps` output on Alpine has different flags. Use `ps -o pid,pcpu,pmem,rss,etime`.
-- `sqlite3` may not be installed — DB integrity checks will fail with "command not found". In cron jobs, skip or use `sqlite3 ... 2>/dev/null || echo "sqlite3 not installed"` to avoid wasting turns.
+- `sqlite3` may not be installed — Phase 4 and Phase 9 now include `command -v` guards to skip gracefully. If running manually, install via `apt install sqlite3` or ignore DB integrity errors.
 
 ### Security
 - Do NOT echo full API keys. Always truncate: `sk-8...1873`.
