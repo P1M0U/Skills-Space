@@ -1,6 +1,6 @@
 # 🛠️ Skills Space
 
-Hermes Agent 生产级技能仓库 — 由 [P1M0U](https://gitee.com/P1M0U) 维护。
+Agent 生产级技能仓库 — 由 [P1M0U](https://gitee.com/P1M0U) 维护。
 
 > [English Version](./README-EN.md)
 
