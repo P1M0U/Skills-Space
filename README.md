@@ -14,6 +14,7 @@ Hermes Agent 生产级技能仓库 — 由 [P1M0U](https://gitee.com/P1M0U) 维�
 | [🛡️ server-security-check](./server-security-check/) | v2.6.1 | 服务器生产级安全审计 — 20 项 CIS 级别检查、SSH 加固、恶意进程扫描、Docker 安全、TLS 证书检查 |
 | [🔒 ssh-bruteforce-guard](./ssh-bruteforce-guard/) | v1.0.0 | SSH暴力破解自动封禁监控 — 检测每小时攻击超过阈值的IP，自动通过fail2ban和ufw封禁 |
 | [🌟 weekly-oss-recommend](./weekly-oss-recommend/) | v1.0.0 | 每周优秀开源项目推荐 — 覆盖 Python AI Agent、Go、Vue3 等 5 个方向 28 个搜索关键词 |
+| [🔧 git-collab-workflow](./git-collab-workflow/) | v1.1.0 | 标准化 Git 协作流程 — 分支管理、代码检查、Conventional Commits、PR 创建、分支清理 |
 
 ---
 

@@ -1,0 +1,343 @@
+---
+name: git-collab-workflow
+description: "标准化 Git 协作流程：分支管理、代码检查、格式化、提交、推送、创建 PR。适用于 Gitee/GitHub 项目。"
+version: 1.1.0
+platforms: [linux, macos, windows]
+metadata:
+  hermes:
+    tags: [git, gitee, github, pr, code-review, workflow, collaboration]
+    related_skills: [gitee-pr-workflow, github-pr-workflow, code-review]
+---
+
+# Git 协作流程 Skill
+
+标准化的 Git 协作工作流：分支 → 修改 → 检查 → 提交 → 推送 → PR → 清理。
+
+## 触发条件
+
+当用户说以下关键词时加载此 skill：
+- 提交代码 / commit / push
+- 创建 PR / 合并请求
+- 代码检查 / lint / format
+- 提交到 Gitee / GitHub
+
+## 前置检查
+
+在执行任何操作前，先确认：
+
+```bash
+# 1. 确认在 Git 仓库内
+git rev-parse --is-inside-work-tree 2>&1
+
+# 2. 确认远程仓库地址
+git remote -v 2>&1
+```
+
+若不在 Git 仓库内，终止流程并告知用户。
+
+## 完整流程
+
+### Phase 1: 分支管理
+
+```bash
+# 检查当前分支
+git branch --show-current
+
+# 若不在 main/master，切换回主分支
+git checkout main 2>&1 || git checkout master 2>&1
+
+# 拉取最新代码
+git pull origin main 2>&1 || git pull origin master 2>&1
+```
+
+**规则**：
+- 主分支名称以 `git branch --show-current` 的实际结果为准（可能是 `main`、`master`、`dev` 等）
+- 切换前检查工作区是否干净（`git status --porcelain`），有未提交更改则提示用户先 stash 或 commit
+
+**冲突处理**：若 `git pull` 时出现合并冲突，列出冲突文件让用户决定如何解决（手动编辑 / `git merge --abort` 放弃合并）。
+
+### Phase 2: 创建功能分支
+
+根据用户意图选择分支前缀：
+
+| 意图 | 前缀 | 示例 |
+|------|------|------|
+| 修 bug | `fix/` | `fix/login-timeout` |
+| 新功能 | `feat/` | `feat/user-avatar` |
+| 重构 | `refactor/` | `refactor/api-layer` |
+| 文档 | `docs/` | `docs/api-readme` |
+| 测试 | `test/` | `test/auth-cases` |
+| 杂项 | `chore/` | `chore/dependencies` |
+
+```bash
+# 从主分支创建功能分支
+git checkout -b <prefix>/<branch-name>
+```
+
+**分支命名规则**：
+- 全小写，用 `-` 连接
+- 语义化描述，如 `fix/cron-provider-error`、`feat/health-check-profiles`
+- 不超过 50 个字符
+
+**确认**：创建前向用户确认分支名是否正确。
+
+### Phase 3: 代码修改
+
+此阶段由用户或 agent 完成实际代码修改。修改完成后进入 Phase 4。
+
+### Phase 4: 代码检查与格式化
+
+**必须在提交前执行**。
+
+**优先检查 pre-commit hooks**：若项目有 `.pre-commit-config.yaml`，直接运行 `pre-commit run --all-files`，跳过下面的手动检查。
+
+#### Python 项目
+
+```bash
+# 代码检查 + 自动修复
+ruff check --fix . 2>&1
+
+# 代码格式化
+ruff format . 2>&1
+
+# 或使用 autopep8（若项目用 autopep8）
+autopep8 --in-place --recursive . 2>&1
+
+# 类型检查（如有 mypy 配置）
+mypy . 2>&1 || true
+```
+
+#### Node.js / Vue / React 项目
+
+```bash
+# 代码格式化
+npm run format 2>&1
+
+# 代码检查
+npm run lint 2>&1
+
+# 类型检查（如有）
+npm run type-check 2>&1 || npx vue-tsc --noEmit 2>&1
+```
+
+#### Shell 脚本
+
+```bash
+# Shell 脚本检查（如有 shellcheck）
+shellcheck scripts/*.sh 2>&1 || true
+```
+
+#### 混合项目（前后端）
+
+```bash
+# 后端（Python）
+cd backend/ && ruff check --fix . && ruff format . && cd ..
+
+# 前端（Node.js）
+cd frontend/ && npm run format && npm run lint && cd ..
+```
+
+**检查失败处理**：
+- 若 lint/format 报错，先尝试自动修复（`ruff check --fix`、`npm run lint -- --fix`）
+- 自动修复后仍有错误，列出错误信息让用户决定如何处理
+- **禁止跳过检查直接提交**
+
+### Phase 5: 提交代码
+
+```bash
+# 查看变更文件
+git status
+git diff --stat
+
+# 添加变更文件
+git add <files>
+
+# 提交（Conventional Commits 规范）
+git commit -m "<type>(<scope>): <description>"
+```
+
+**提交前确认**：展示 `git diff --staged` 的变更摘要给用户，确认无误后再 commit。
+
+**提交信息规范**（Conventional Commits）：
+
+```
+<type>(<scope>): <subject>
+
+[可选 body]
+
+[可选 footer]
+```
+
+| type | 说明 |
+|------|------|
+| `feat` | 新功能 |
+| `fix` | 修复 bug |
+| `refactor` | 重构（不改变功能） |
+| `docs` | 文档更新 |
+| `test` | 测试相关 |
+| `chore` | 构建/工具/依赖 |
+| `style` | 代码格式（不影响逻辑） |
+| `perf` | 性能优化 |
+
+**示例**：
+
+```
+feat(health-check): add profile phase 9
+
+Add Phase 9: Profile Health Check to hermes-health-check skill.
+Checks disk usage, broken skills, and gateway status per profile.
+
+Closes #42
+```
+
+```
+fix(gateway): resolve approval card click not registering
+
+The _allow_group_message check was missing default_group_policy
+for DM chats, causing all approval clicks to be rejected.
+
+Fix: set platforms.feishu.extra.default_group_policy = open
+```
+
+```
+chore(deps): bump hermes-health-check to v2.2.1
+
+Update watchdog scripts to output structured JSON.
+```
+
+### Phase 6: 推送与创建 PR
+
+#### 方式 A：有 GitHub MCP
+
+优先使用 MCP 工具创建 PR：
+
+```python
+# GitHub MCP（如已配置）
+mcp__github__create_pull_request(
+    owner="<owner>",
+    repo="<repo>",
+    title="<PR标题>",
+    head="<分支名>",
+    base="main",
+    body="<PR描述>"
+)
+```
+
+#### 方式 B：无 MCP，使用 HTTPS + Token
+
+检查远程仓库 URL 格式：
+
+```bash
+git remote -v
+```
+
+**若 URL 已包含 Token**（格式：`https://用户名:私人令牌@gitee.com/用户名/仓库名.git`）：
+
+```bash
+# 直接推送
+git push origin <branch-name>
+```
+
+然后通过 API 创建 PR：
+
+```bash
+# Gitee API
+curl -X POST "https://gitee.com/api/v5/repos/<owner>/<repo>/pulls" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "access_token": "<token>",
+    "title": "<PR标题>",
+    "head": "<分支名>",
+    "base": "main",
+    "body": "<PR描述>"
+  }'
+```
+
+**若 URL 不含 Token**：
+
+1. 检查是否有全局 credential helper 存储了 token
+2. 若都没有，向用户索要 Gitee/GitHub 私人令牌
+3. 获取 token 后，更新远程 URL 并推送
+
+```bash
+# 更新远程 URL 加入 token
+git remote set-url origin https://<username>:<token>@gitee.com/<username>/<repo>.git
+
+# 推送
+git push origin <branch-name>
+```
+
+#### 方式 C：无法自动创建 PR
+
+推送代码后，生成 PR 链接供用户手动创建：
+
+```
+请手动创建 PR：
+Gitee: https://gitee.com/<owner>/<repo>/pulls/new?source=<branch>&target=main
+GitHub: https://github.com/<owner>/<repo>/compare/main...<branch>
+```
+
+### Phase 7: 通知用户
+
+完成后输出汇总：
+
+```
+✅ Git 协作流程完成
+
+分支: feat/xxx → main
+提交: feat(scope): description
+推送: 已推送到远程
+PR: <PR链接或手动创建指引>
+
+请前往 Gitee/GitHub 审核代码。
+```
+
+**重要**：PR 创建后提醒用户去平台审核，**不要自行合并**。
+
+### Phase 8: 清理（PR 合并后）
+
+PR 被合并后，清理本地和远程的功能分支：
+
+```bash
+# 删除本地功能分支
+git checkout main
+git branch -d <branch-name>
+
+# 删除远程功能分支
+git push origin --delete <branch-name>
+```
+
+**注意**：仅在用户确认 PR 已合并后执行此步骤。
+
+## 注意事项
+
+- **永远不要在主分支上直接修改代码** — 必须创建功能分支
+- **永远不要跳过代码检查** — lint/format 失败不能提交
+- **永远不要自行合并 PR** — 由用户 review 后决定
+- **commit 前确认变更范围** — 用 `git diff --staged` 检查暂存内容
+- **敏感信息不能提交** — 检查是否有 API key、密码等被意外包含
+- **大文件不能提交** — 检查 `git diff --stat` 中是否有 >1MB 的文件
+
+## Pitfalls
+
+### Token 相关
+- Gitee 私人令牌需要 `projects` 权限 scope
+- GitHub Personal Access Token 需要 `repo` scope
+- Token 有效期有限，过期后需要重新生成
+- 不要在日志或输出中暴露完整 token，用 `sk-8...xxxx` 格式截断
+
+### 分支相关
+- 若功能分支已有远程同名分支，`git push` 需要加 `--force-with-lease`（谨慎使用）
+- PR 创建前确保分支已推送到远程
+- 合并冲突时不要强行 push，先解决冲突再提交
+
+### 检查相关
+- `ruff check` 和 `ruff format` 可能有不同的配置（`pyproject.toml`、`ruff.toml`）
+- `npm run lint` 可能包含 `--max-warnings 0`，导致 warning 也被视为失败
+- 混合项目需要分别在子目录中执行检查
+- 有 `.pre-commit-config.yaml` 的项目优先用 `pre-commit run --all-files`
+
+### 提交相关
+- `git add .` 可能添加不需要的文件，优先用 `git add <具体文件>`
+- 多个无关修改不要放在一个 commit 里，应该分开提交
+- commit message 必须用英文（Conventional Commits 规范）
