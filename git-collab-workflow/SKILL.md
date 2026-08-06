@@ -1,7 +1,7 @@
 ---
 name: git-collab-workflow
 description: "标准化 Git 协作流程：分支管理、代码检查、格式化、提交、推送、创建 PR。适用于 Gitee/GitHub 项目。"
-version: 1.1.0
+version: 1.2.0
 platforms: [linux, macos, windows]
 metadata:
   hermes:
@@ -141,6 +141,38 @@ cd frontend/ && npm run format && npm run lint && cd ..
 - 若 lint/format 报错，先尝试自动修复（`ruff check --fix`、`npm run lint -- --fix`）
 - 自动修复后仍有错误，列出错误信息让用户决定如何处理
 - **禁止跳过检查直接提交**
+
+### Phase 4.5: .gitignore 检查
+
+**提交前检查是否有不该跟踪的文件被添加了**：
+
+```bash
+# 1. 检查是否有敏感文件被跟踪
+git ls-files | grep -iE "\.env$|\.env\.local$|\.pem$|\.key$|id_rsa|credentials|secret" 2>/dev/null
+
+# 2. 检查是否有构建产物/缓存被跟踪
+git ls-files | grep -iE "node_modules/|__pycache__/|\.pyc$|dist/|build/|\.DS_Store|Thumbs\.db|\.idea/|\.vscode/|\.cache/" 2>/dev/null
+
+# 3. 检查是否有大文件（>1MB）
+git ls-files -z | xargs -0 -I{} sh -c 'size=$(wc -c < "{}" 2>/dev/null); [ "$size" -gt 1048576 ] && echo "{} ($((size/1024))KB)"' 2>/dev/null
+
+# 4. 查看当前 .gitignore 内容（如有）
+cat .gitignore 2>/dev/null || echo "(no .gitignore found)"
+```
+
+**发现异常时的处理**：
+- **敏感文件**（.env、.pem、密钥等）→ 立即从 git 中移除：`git rm --cached <file>`，并添加到 `.gitignore`
+- **构建产物**（node_modules、__pycache__、dist 等）→ 添加到 `.gitignore`
+- **大文件**（>1MB）→ 提醒用户确认是否应该提交，考虑用 Git LFS
+- **无 .gitignore** → 根据项目类型生成基础 `.gitignore`（Python / Node.js / 混合项目模板）
+
+**常见需要忽略的文件（按项目类型）**：
+
+| 项目类型 | 典型忽略项 |
+|---------|-----------|
+| Python | `__pycache__/`, `*.pyc`, `.venv/`, `dist/`, `*.egg-info/`, `.mypy_cache/`, `.ruff_cache/` |
+| Node.js | `node_modules/`, `dist/`, `.nuxt/`, `.next/`, `*.log` |
+| 通用 | `.env`, `.env.local`, `.DS_Store`, `Thumbs.db`, `.idea/`, `.vscode/`, `*.swp` |
 
 ### Phase 5: 提交代码
 

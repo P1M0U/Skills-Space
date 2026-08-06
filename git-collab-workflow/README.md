@@ -70,7 +70,7 @@ rm -rf /tmp/Skills-Space
 
 ```
 git-collab-workflow/
-├── SKILL.md    # 主技能文件（v1.1.0）
+├── SKILL.md    # 主技能文件（v1.2.0）
 └── README.md   # 本文件
 ```
 
