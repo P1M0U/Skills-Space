@@ -1,7 +1,7 @@
 ---
 name: git-collab-workflow
 description: "标准化 Git 协作流程：分支管理、代码检查、格式化、提交、推送、创建 PR。适用于 Gitee/GitHub 项目。"
-version: 1.2.0
+version: 1.3.0
 platforms: [linux, macos, windows]
 metadata:
   hermes:
@@ -192,6 +192,8 @@ git commit -m "<type>(<scope>): <description>"
 
 **提交信息规范**（Conventional Commits）：
 
+格式：`<英文type>(<scope>): <中文或英文描述>`
+
 ```
 <type>(<scope>): <subject>
 
@@ -211,10 +213,15 @@ git commit -m "<type>(<scope>): <description>"
 | `style` | 代码格式（不影响逻辑） |
 | `perf` | 性能优化 |
 
+**描述语言**：type 和 scope 必须用英文，描述可以用中文或英文：
+- 中文描述：`feat(auth): 添加登录超时重试机制`
+- 英文描述：`feat(auth): add login timeout retry mechanism`
+- 混用也行：`fix(api): 修复 timeout error on slow network`
+
 **示例**：
 
 ```
-feat(health-check): add profile phase 9
+feat(health-check): 新增 Phase 9 Profile 健康检查
 
 Add Phase 9: Profile Health Check to hermes-health-check skill.
 Checks disk usage, broken skills, and gateway status per profile.
@@ -223,7 +230,7 @@ Closes #42
 ```
 
 ```
-fix(gateway): resolve approval card click not registering
+fix(gateway): 修复审批卡片点击无响应
 
 The _allow_group_message check was missing default_group_policy
 for DM chats, causing all approval clicks to be rejected.
@@ -372,4 +379,4 @@ git push origin --delete <branch-name>
 ### 提交相关
 - `git add .` 可能添加不需要的文件，优先用 `git add <具体文件>`
 - 多个无关修改不要放在一个 commit 里，应该分开提交
-- commit message 必须用英文（Conventional Commits 规范）
+- commit message 的 type 和 scope 必须用英文，描述可以用中文或英文
