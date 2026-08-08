@@ -15,6 +15,7 @@ Production-grade Hermes Agent skills repository — maintained by [P1M0U](https:
 | [🔒 ssh-bruteforce-guard](./ssh-bruteforce-guard/) | v1.0.0 | SSH brute-force auto-ban monitoring — detect IPs exceeding threshold, auto-ban via fail2ban and ufw |
 | [🌟 weekly-oss-recommend](./weekly-oss-recommend/) | v1.0.0 | Weekly open source project recommendations — covering Python AI Agent, Go, Vue3 and more |
 | [🔧 git-collab-workflow](./git-collab-workflow/) | v1.2.0 | Standardized Git collaboration workflow — branch management, code checks, Conventional Commits, PR creation, branch cleanup |
+| [🔍 pr-review](./pr-review/) | v1.1.0 | PR code review — 8-dimension evaluation, batch strategy, scoring, never merge |
 
 ---
 
