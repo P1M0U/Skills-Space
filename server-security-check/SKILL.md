@@ -1,7 +1,7 @@
 ---
 name: server-security-check
 description: "Production-grade server security health check — 20 phases covering firewall, ports, SSH hardening, brute force, malware/rootkit, user audit, SUID, crontab, systemd, Docker, SELinux/AppArmor, kernel hardening, disk/inode, memory, login logs, SSH keys, system updates, auditd, TLS certificates, and unattended-upgrades. Includes scoring system, interactive mode, and no-agent cron watchdog."
-version: 2.6.1
+version: 2.7.0
 platforms: [linux]
 metadata:
   hermes:
